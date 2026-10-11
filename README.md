@@ -4,9 +4,9 @@ Ein kleiner Roboter auf dem Bildschirm, inspiriert von EMO. Man sieht nur seine 
 
 ## Öffnen
 
-**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v12/**
+**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v13/**
 
-Jede neue Version bekommt einen eigenen Link (`v12`, `v13`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 13`.
+Jede neue Version bekommt einen eigenen Link (`v13`, `v14`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 14`.
 
 Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gibt keine Knöpfe und keine Einstellungen.
 
@@ -19,7 +19,7 @@ Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gib
 
 **Mit Claude-Gehirn** redet er über alles und sucht im Internet. Dafür EMO einmal mit diesem Link öffnen (Schlüssel von https://console.anthropic.com/settings/keys):
 
-`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v12/#key=DEIN-SCHLÜSSEL`
+`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v13/#key=DEIN-SCHLÜSSEL`
 
 Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse entfernt. Mit `#ort=Kassel` kann man den Wohnort für das Wetter ändern (Standard: Frankfurt am Main).
 
@@ -29,7 +29,7 @@ Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse en
 | --- | --- |
 | Irgendeine Frage („Wie wird das Wetter morgen?“, „Wie groß ist die Sonne?“, „Wer hat gestern gewonnen?“) | antwortet als KI, mit Wetter-Daten und Websuche |
 | „Emo, Hände hoch!“ oder Fingerpistole in die Kamera zeigen | hebt sofort ängstlich die Hände |
-| „Peng!“, „Bang!“, „Boom!“ (jeder kurze Ruf, wenn die Hände oben sind) oder Fingerpistole hochzucken lassen | Zeitlupe! Entweder weicht er wie im Film knapp aus, oder die Kugel trifft sein Auge (Glitch, Riss, X-Augen, kippt um, startet neu) |
+| „Peng!“, „Bang!“, „Boom!“ (jeder kurze Ruf, wenn die Hände oben sind) oder Fingerpistole hochzucken lassen | Zeitlupe! Entweder weicht er wie im Film knapp aus, oder die Kugel trifft sein Auge: es bekommt Risse und zerspringt in Glasscherben, das andere Auge weint, dann setzt er sich wieder zusammen |
 | „Hände runter“ | nimmt die Hände runter |
 | „Erzähl einen Witz“ | erzählt jedes Mal einen anderen Witz |
 | „Zwei plus zwei“, „10 mal 5“, „hundert geteilt durch vier“ | rechnet (auch mit Zahlwörtern, Punkt vor Strich) |
