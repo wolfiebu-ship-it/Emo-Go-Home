@@ -4,9 +4,9 @@ Ein kleiner Roboter auf dem Bildschirm, inspiriert von EMO. Man sieht nur seine 
 
 ## Öffnen
 
-**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v6/**
+**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v7/**
 
-Jede neue Version bekommt einen eigenen Link (`v6`, `v7`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 7`.
+Jede neue Version bekommt einen eigenen Link (`v7`, `v8`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 8`.
 
 Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gibt keine Knöpfe und keine Einstellungen.
 
@@ -19,7 +19,7 @@ Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gib
 
 **Mit Claude-Gehirn** redet er über alles und sucht im Internet. Dafür EMO einmal mit diesem Link öffnen (Schlüssel von https://console.anthropic.com/settings/keys):
 
-`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v6/#key=DEIN-SCHLÜSSEL`
+`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v7/#key=DEIN-SCHLÜSSEL`
 
 Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse entfernt. Mit `#ort=Kassel` kann man den Wohnort für das Wetter ändern (Standard: Frankfurt am Main).
 
@@ -34,6 +34,7 @@ Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse en
 | „Erzähl einen Witz“ | erzählt jedes Mal einen anderen Witz |
 | „Tanz mal“, „Sing was“ | tanzt oder singt |
 | „Gute Nacht“ / „Wach auf“ | schläft ein / wacht auf |
+| „Emo, mach Untertitel an“ / „Untertitel aus“ | zeigt an, was EMO sagt und was er gehört hat (normalerweise aus) |
 | „Sei still“ | hört auf zu reden |
 | „Vergiss alles“ | fängt ein neues Gespräch an |
 | „Kamera aus“ / „Kamera an“ | schaltet die Fingerpistolen-Erkennung aus oder an |

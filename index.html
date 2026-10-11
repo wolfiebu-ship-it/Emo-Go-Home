@@ -74,7 +74,7 @@ const ease = (k, dt) => 1 - Math.exp(-k * dt);
 const lerp = (a, b, t) => a + (b - a) * t;
 
 /* ================= Settings ================= */
-const settings = { voiceMode: 'child', voiceName: '', pitch: 72, rate: 1.12, dodge: 45, cam: false, apiKey: '', place: '' };
+const settings = { voiceMode: 'child', voiceName: '', pitch: 72, rate: 1.12, dodge: 45, cam: false, subs: false, apiKey: '', place: '' };
 try {
   const old = JSON.parse(localStorage.getItem('emo-settings2') || '{}');
   if (old.apiKey) settings.apiKey = old.apiKey;
@@ -388,7 +388,7 @@ let readyVoice = false, readyEars = false;
 function showLoad() {
   if (greeted) return;
   const pct = Math.min(99, Math.round(USE_VOSK && listenMode === 'vosk' ? (loadProg.voice * 20 + loadProg.ears * 46) / 66 * 100 : loadProg.voice * 100));
-  setSub(`Emo wacht auf … ${pct} %`);
+  setSub(`Emo wacht auf … ${pct} %`, true);
 }
 async function fetchBytes(url, key) {
   const r = await fetch(asset(url));
@@ -538,8 +538,9 @@ async function say(text, expr = 'happy', holdMs) {
 
 /* ================= Screen text ================= */
 let subTimer = 0, heardTimer = 0, hintTimer = 0;
-function setSub(t) { clearTimeout(subTimer); $('#subtitle').textContent = t; }
-function setHeard(t) { clearTimeout(heardTimer); $('#heard').textContent = t ? `„${t}“` : ''; heardTimer = setTimeout(() => $('#heard').textContent = '', 5000); }
+// Subtitles are off unless you ask for them ("Emo, mach Untertitel an"). Status messages (loading, "tap me") always show.
+function setSub(t, always) { clearTimeout(subTimer); $('#subtitle').textContent = (settings.subs || always) ? t : ''; }
+function setHeard(t) { if (!settings.subs) t = ''; clearTimeout(heardTimer); $('#heard').textContent = t ? `„${t}“` : ''; heardTimer = setTimeout(() => $('#heard').textContent = '', 5000); }
 function hint(msg, ms = 7000) { const el = $('#hint'); el.textContent = msg; el.hidden = false; clearTimeout(hintTimer); hintTimer = setTimeout(() => el.hidden = true, ms); }
 function earState() { const e = $('#ear'); e.classList.toggle('on', micOn && !thinking); e.classList.toggle('hot', camGun); }
 
@@ -666,7 +667,15 @@ function fuzzyHandsUp(t) {
 const fuzzyBang = t => t.split(' ').map(simp).some(x => x.length >= 3 && x.length <= 6 && ['peng', 'beng', 'bang', 'pang', 'bumm', 'boom', 'bum'].some(k => lev(x, k) <= 1));
 const HANDS_DOWN = /\b(h(ä|a|e)nde?|arme)\s*(wieder\s*)?(runter|nach unten)/;
 const norm = s => s.toLowerCase().replace(/[!?.,;:"'„“]/g, ' ').replace(/\s+/g, ' ').trim().replace(/^(hey |hallo |ok |okay |du )?(emo|emma|ema|nemo|imo|e-mo)\b\s*/, '$1').trim();
+function subsSaid(t) { return /unter ?titel|untertitle/.test(t) || t.split(' ').some(w => w.length >= 8 && lev(simp(w), 'untertitel') <= 2); }
+function setSubs(on) {
+  settings.subs = on; saveSettings();
+  if (!on) { $('#subtitle').textContent = ''; $('#heard').textContent = ''; }
+  say(on ? 'Okay! Jetzt kannst du mitlesen.' : 'Okay, Untertitel sind aus.', 'happy');
+}
 const ACTION_RULES = [
+  [t => subsSaid(t) && /\b(aus|weg|ab|stopp|ausschalten|ausmachen|nicht mehr)\b/.test(t), () => setSubs(false)],
+  [t => subsSaid(t), () => setSubs(true)],
   [/\b(tanz|tanzen|tanze|dance)\b/, () => dance()],
   [/\b(sing|singen|lied)\b/, () => sing()],
   [/\b(witz|witze|lustiges)\b|bring mich zum lachen/, () => tellJoke()],
@@ -702,7 +711,7 @@ async function handleInput(raw) {
   if (actionLock || thinking) return;
   if (speaking) { stopVoice(); sayToken++; speaking = false; }
   const woke = await wake(true);
-  for (const [re, fn] of ACTION_RULES) if (re.test(t)) return fn();
+  for (const [re, fn] of ACTION_RULES) if (typeof re === 'function' ? re(t) : re.test(t)) return fn();
   if (hasBrain()) return askBrain(raw);
   return localBrain(t, woke);
 }
@@ -1187,7 +1196,7 @@ function tryAudio() {
 function maybeGreet() {
   if (greeted || !readyVoice || !readyEars) return;
   if (audioReady()) { audioOk = true; greet(); }
-  else setSub('Tipp mich einmal an, dann kann ich sprechen!');
+  else setSub('Tipp mich einmal an, dann kann ich sprechen!', true);
 }
 async function boot() {
   started = true; asleep = false; bootT = 0; activity();
