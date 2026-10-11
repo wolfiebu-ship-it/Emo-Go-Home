@@ -178,20 +178,7 @@ function strokeLines(g, lines) { for (const l of lines) { g.beginPath(); l.forEa
 
 function drawEye(g, cx, cy, side, e, t) {
   if (e.flicker > .05 && Math.random() < e.flicker * .55) return;
-  if (e.broken) {
-    const bw = .3 * S, bh = .37 * S;
-    g.save(); g.translate(cx, cy);
-    g.globalAlpha = .22 + Math.random() * .08; g.strokeStyle = eyeCol(); g.lineWidth = Math.max(2, S * .01);
-    rr(g, -bw / 2, -bh / 2, bw, bh, Math.min(bw, bh) * .24); g.stroke();
-    if (Math.random() < .12) {
-      // a little electric zap inside the empty socket
-      g.globalAlpha = .9; g.strokeStyle = '#d9fbff'; g.lineWidth = Math.max(1.5, S * .006); g.beginPath();
-      let x = rand(-.3, .3) * bw, y = rand(-.3, .3) * bh; g.moveTo(x, y);
-      for (let k = 0; k < 4; k++) { x += rand(-.12, .12) * bw; y += rand(-.12, .12) * bh; g.lineTo(x, y); }
-      g.stroke();
-    }
-    g.restore(); g.globalAlpha = 1; return;
-  }
+  if (e.broken) { drawBrokenScreen(g, cx, cy, e.broken, t); return; }
   const p = e.cur;
   const blink = blinkPhase >= 0 ? Math.sin(blinkPhase * Math.PI) : 0;
   const talk = 1 + talkLevel * .16;
@@ -232,6 +219,42 @@ function drawEye(g, cx, cy, side, e, t) {
   g.restore(); g.restore();
 }
 
+// A hit eye looks like a TV screen that got smacked: coloured stripes, a black ink blot, static and flicker.
+function makeBrokenScreen() {
+  const cols = ['#39ff6a', '#39ff6a', '#39ff6a', '#2bd15a', '#ff3df0', '#ffffff', '#3fe6ff', '#fff15a'];
+  const lines = []; const n = 14 + Math.floor(Math.random() * 8);
+  for (let k = 0; k < n; k++) lines.push({ x: rand(-.5, .5), w: rand(.008, .035), c: pick(cols), y0: rand(-.5, -.1), y1: rand(.1, .5), on: Math.random() < .85 });
+  return { lines, blot: { x: rand(-.15, .15), y: rand(-.15, .1), r: rand(.18, .26) }, keep: rand(.25, .45), repair: 0 };
+}
+function drawBrokenScreen(g, cx, cy, b, t) {
+  const w = .3 * S, h = .37 * S, r = Math.min(w, h) * .24, fade = 1 - b.repair;
+  g.save(); g.translate(cx, cy);
+  rr(g, -w / 2, -h / 2, w, h, r); g.save(); g.clip();
+  // what is left of the normal picture, then the dead, dark part of the screen
+  g.fillStyle = eyeCol(); g.fillRect(-w, -h, w * 2, h * 2);
+  g.globalAlpha = fade; g.fillStyle = '#06120f'; g.fillRect(-w / 2 + b.keep * w * b.repair, -h, w * 2, h * 2);
+  if (Math.random() < .5 * fade) { g.fillStyle = eyeCol(); g.globalAlpha = .55 * fade; g.fillRect(-w / 2, -h / 2, w * b.keep, h); }
+  // coloured stripes, flickering
+  for (const L of b.lines) {
+    if (!L.on && Math.random() < .7) continue;
+    g.globalAlpha = fade * (Math.random() < .12 ? .25 : .95);
+    g.fillStyle = L.c; g.fillRect(L.x * w, L.y0 * h, Math.max(1.5, L.w * w), (L.y1 - L.y0) * h + h);
+  }
+  // static noise rows
+  g.globalAlpha = fade * .8;
+  for (let k = 0; k < 4; k++) {
+    const y = rand(-.5, .5) * h, hh = rand(.01, .04) * h;
+    for (let x = -w / 2; x < w / 2; x += 4) { const v = Math.floor(rand(60, 255)); g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(x, y, 4, hh); }
+  }
+  // black ink blot where the bullet hit, with dark streaks running out of it
+  g.globalAlpha = fade; g.fillStyle = '#000';
+  g.beginPath(); for (let k = 0; k <= 14; k++) { const a = k / 14 * Math.PI * 2, rad = b.blot.r * w * (k % 2 ? .65 : 1); const px = b.blot.x * w + Math.cos(a) * rad, py = b.blot.y * h + Math.sin(a) * rad; k ? g.lineTo(px, py) : g.moveTo(px, py); } g.fill();
+  g.fillRect(b.blot.x * w - w * .02, b.blot.y * h, w * .04, h);
+  g.restore();
+  // the whole screen jumps a little now and then
+  if (Math.random() < .08 * fade) { g.globalAlpha = .35; g.fillStyle = '#39ff6a'; g.fillRect(-w / 2, rand(-.5, .5) * h, w, 2); }
+  g.restore(); g.globalAlpha = 1;
+}
 function drawHand(g, x, y, side, rot, t) {
   g.save(); g.translate(x, y); g.rotate(rot);
   const u = S * .0078; g.scale(u, u);
@@ -556,6 +579,14 @@ function sfxShatter() { const a = ac(), t = a.currentTime; for (let i = 0; i < 1
 let lastTink = 0;
 function sfxTink() { if (!AC || now() - lastTink < 60) return; lastTink = now(); tone(rand(3000, 5200), rand(2600, 4800), AC.currentTime, .05, 'sine', .04); }
 function sfxSob() { const a = ac(); let t = a.currentTime; for (let i = 0; i < 4; i++) { tone(520 - i * 30, 330 - i * 20, t, .32, 'triangle', .07, 12); t += .42; } }
+let buzzNode = null;
+function sfxBuzz(sec) {
+  const a = ac(), t = a.currentTime, o = a.createOscillator(), o2 = a.createOscillator(), gn = a.createGain(), f = a.createBiquadFilter();
+  o.type = 'sawtooth'; o.frequency.value = 100; o2.type = 'square'; o2.frequency.value = 50;
+  f.type = 'lowpass'; f.frequency.value = 900; gn.gain.setValueAtTime(0, t); gn.gain.linearRampToValueAtTime(.06, t + .05); gn.gain.setValueAtTime(.06, t + sec - .3); gn.gain.linearRampToValueAtTime(0, t + sec);
+  o.connect(f); o2.connect(f); f.connect(gn); gn.connect(master); o.start(t); o2.start(t); o.stop(t + sec + .05); o2.stop(t + sec + .05);
+  for (let k = 0; k < sec * 3; k++) noise(t + rand(0, sec - .2), .06, rand(1500, 6000), .18, 'bandpass');
+}
 function sfxSlowmo() { const a = ac(), t = a.currentTime; tone(150, 42, t, 1.7, 'sine', .45); noise(t, 1.6, 300, .35, 'lowpass', 80); tone(60, 50, t + .45, .18, 'sine', .5); tone(60, 50, t + .75, .18, 'sine', .45); tone(60, 50, t + 1.3, .18, 'sine', .4); }
 function sfxGlitch() { const a = ac(), t = a.currentTime; for (let i = 0; i < 9; i++) { noise(t + i * .045, .035, rand(800, 6000), .3, 'bandpass'); if (i % 2) tone(rand(200, 1800), rand(100, 900), t + i * .045, .03, 'square', .05); } }
 function sfxRicochet() { const a = ac(), t = a.currentTime; tone(2600, 500, t, .45, 'sine', .12, 40); noise(t, .25, 3000, .25, 'highpass'); }
@@ -812,7 +843,7 @@ async function bang() {
     if (Math.random() * 100 < settings.dodge) await dodge(); else await getHit();
   } finally {
     actionLock = false; face.k = 7; face.tx = face.ty = face.trot = 0; face.tsc = 1; exprUntil = now();
-    timeTarget = 1; timeScale = 1; eyes.forEach(e => { e.flicker = 0; e.broken = false; }); shards = []; crying = 0;
+    timeTarget = 1; timeScale = 1; glitch = 0; eyes.forEach(e => { e.flicker = 0; e.broken = false; }); shards = []; crying = 0;
   }
 }
 // Hit: a short, smooth slow motion, the eye cracks and shatters into glass pieces, the other eye cries,
@@ -849,18 +880,17 @@ async function getHit() {
   eyes[i].crack = { x: rand(-.15, .15), y: rand(-.15, .1), lines: makeCrackLines(S * .26, 9), alpha: 1, fading: false };
   face.k = 26; face.tx = i ? .07 : -.07; face.trot = i ? .12 : -.12;
   await wait(260);
-  // … and shatters into glass pieces
-  eyes[i].crack = null; eyes[i].broken = true; shatterEye(i); sfxShatter(); shake = .6;
+  // … and the screen behind it breaks like a smacked TV: stripes, static, a black blot
+  eyes[i].crack = null; eyes[i].broken = makeBrokenScreen(); sfxGlitch(); sfxBuzz(5.2); shake = .6; glitch = .25;
   face.k = 8; face.tx = 0; face.trot = i ? .06 : -.06;
   setExpr('sad', 0); hands.target = 0;
-  await wait(600);
-  crying = 4.6; sfxSob();
-  say(pick(['Aua! Mein Auge ist kaputt!', 'Ahhh, mein Auge! Ich sehe nur noch die Hälfte!', 'Uaaah, das tut weh!']), 'sad', 0);
-  await wait(4300);
-  // repair: the pieces fly back and the eye lights up again
-  crying = 0; face.trot = 0; sfxPowerUp(); reassemble();
-  await wait(800);
-  shards = []; eyes[i].broken = false; flash = .15; exprUntil = now();
+  await wait(700);
+  say(pick(['Aua, mein Auge! Oh … jetzt bin ich sehr traurig.', 'Oh nein, mein Auge ist kaputt. Jetzt bin ich sehr traurig.', 'Mein Auge flimmert … oh, jetzt bin ich sehr traurig.']), 'sad', 0);
+  await wait(4200);
+  // repair: the stripes fade away and the eye lights up again
+  face.trot = 0; sfxPowerUp();
+  for (let k = 1; k <= 10; k++) { eyes[i].broken.repair = k / 10; await wait(80); }
+  eyes[i].broken = false; flash = .15; exprUntil = now();
   await wait(300);
   await say(pick(['Puh, wieder repariert! Aber bitte schieß nicht mehr auf mich.', 'Zum Glück kann ich mich selbst reparieren. Bitte nicht nochmal!', 'Wieder heile. Spielen wir lieber was Nettes?']), 'sad');
 }
@@ -1077,7 +1107,7 @@ const COMMANDS = [
   [/(schau|guck)( mal| bitte)* nach unten/, () => lookAt(0, 1, 2500)],
   [/(schau|guck)( mal| bitte)* (mich an|zu mir|geradeaus)/, () => lookAt(0, 0, 2500)],
   [/^(lach|lache)( mal| doch| bitte| laut)*$|^lachen$/, () => { sfxGiggle(); return say(pick(['Hahaha! Hihihi!', 'Hihihi! Hahaha!']), 'laugh'); }],
-  [/^(wein|weine|heul|heule)( mal| doch| bitte)*$|^weinen$/, () => { crying = 3; sfxSob(); setExpr('sad', 3200); }],
+  [/^(wein|weine|heul|heule)( mal| doch| bitte)*$|^weinen$|sei traurig|(guck|schau) traurig/, () => say('Oh … jetzt bin ich sehr traurig.', 'sad', 3500)],
   [/\b(wink|winke|winken)\b/, () => faceMove('wave')],
   [/dreh dich|drehen|im kreis/, () => faceMove('spin')],
   [/\b(spring|springe|hüpf|hüpfe)\b/, () => faceMove('jump')],

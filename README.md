@@ -4,9 +4,9 @@ Ein kleiner Roboter auf dem Bildschirm, inspiriert von EMO. Man sieht nur seine 
 
 ## Öffnen
 
-**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v15/**
+**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v16/**
 
-Jede neue Version bekommt einen eigenen Link (`v15`, `v16`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 16`.
+Jede neue Version bekommt einen eigenen Link (`v16`, `v17`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 17`.
 
 Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gibt keine Knöpfe und keine Einstellungen.
 
@@ -19,7 +19,7 @@ Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gib
 
 **Mit Claude-Gehirn** redet er über alles und sucht im Internet. Dafür EMO einmal mit diesem Link öffnen (Schlüssel von https://console.anthropic.com/settings/keys):
 
-`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v15/#key=DEIN-SCHLÜSSEL`
+`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v16/#key=DEIN-SCHLÜSSEL`
 
 Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse entfernt. Mit `#ort=Kassel` kann man den Wohnort für das Wetter ändern (Standard: Frankfurt am Main).
 
@@ -29,7 +29,7 @@ Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse en
 | --- | --- |
 | Irgendeine Frage („Wie wird das Wetter morgen?“, „Wie groß ist die Sonne?“, „Wer hat gestern gewonnen?“) | antwortet als KI, mit Wetter-Daten und Websuche |
 | „Emo, Hände hoch!“ oder Fingerpistole in die Kamera zeigen | hebt sofort die Hände, ohne etwas zu sagen |
-| „Peng!“, „Bang!“, „Boom!“, sehr lauter Knall (wenn die Hände oben sind) oder Fingerpistole hochzucken lassen | Zeitlupe! Entweder weicht er wie im Film knapp aus, oder die Kugel trifft sein Auge: es bekommt Risse und zerspringt in Glasscherben, das andere Auge weint, dann setzt er sich wieder zusammen |
+| „Peng!“, „Bang!“, „Boom!“, sehr lauter Knall (wenn die Hände oben sind) oder Fingerpistole hochzucken lassen | Zeitlupe! Entweder weicht er wie im Film knapp aus, oder die Kugel trifft sein Auge: es geht kaputt wie ein Fernseher, auf den man haut (grüne und bunte Striche, Rauschen, schwarzer Fleck, Brummen). EMO guckt traurig und sagt „Oh, jetzt bin ich sehr traurig“, dann geht das Auge wieder an |
 | „Hände runter“ | nimmt die Hände runter |
 | „Erzähl einen Witz“ | erzählt jedes Mal einen anderen Witz |
 | „Zwei plus zwei“, „10 mal 5“, „hundert geteilt durch vier“ | rechnet (auch mit Zahlwörtern, Punkt vor Strich) |
@@ -48,7 +48,8 @@ Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse en
 | „Ich heiße Max“ / „Wie heiße ich?“ | merkt sich deinen Namen und begrüßt dich damit |
 | „Zwinker mal“, „Guck traurig/wütend/verliebt“, „Mach Herzaugen“, „Augen zu“ | macht das Gesicht |
 | „Schau nach links/rechts/oben/unten“, „Dreh dich“, „Spring“, „Nick mal“, „Wink mal“ | bewegt sich |
-| „Zähl bis zehn“, „Zähl rückwärts“, „Lach mal“, „Wein mal“, „Stell dich vor“ | macht das |
+| „Zähl bis zehn“, „Zähl rückwärts“, „Lach mal“, „Stell dich vor“ | macht das |
+| „Wein mal“, „Sei traurig“ | macht ein trauriges Gesicht und sagt „Oh … jetzt bin ich sehr traurig.“ (ohne Tränen) |
 | „Vergiss alles“ | fängt ein neues Gespräch an |
 | „Kamera aus“ / „Kamera an“ | schaltet die Fingerpistolen-Erkennung aus oder an |
 
