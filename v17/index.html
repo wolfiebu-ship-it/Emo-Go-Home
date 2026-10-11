@@ -65,7 +65,7 @@ const cvs = $('#face'), ctx = cvs.getContext('2d');
 const off = document.createElement('canvas'), octx = off.getContext('2d');
 const glow = document.createElement('canvas'), gctx = glow.getContext('2d');
 let W = 0, H = 0, DPR = 1, S = 1;
-const FACE_Y = .4; // eye height on the screen (0 = top, .5 = middle)
+const FACE_Y = .34; // eye height on the screen (0 = top, .5 = middle)
 function resize() {
   DPR = Math.min(2, window.devicePixelRatio || 1);
   W = innerWidth; H = innerHeight;
@@ -653,6 +653,7 @@ function loadVoice() {
       cfg, sess,
       ids(text) { ids = null; phon.callMain(['-l', cfg.espeak.voice, '--input', JSON.stringify([{ text }]), '--espeak_data', '/espeak-ng-data']); return ids; },
     };
+    try { await synthChild('Hallo.'); } catch (e) {}
     return true;
   })().catch(e => { console.warn('voice failed', e); return false; })
     .then(ok => { readyVoice = true; loadProg.voice = 1; maybeGreet(); return ok; });
@@ -704,6 +705,8 @@ function playPcm(pcm, rate) {
 async function speakChild(text, my) {
   if (!(await loadVoice())) return speakDevice(text);
   const parts = (text.match(/[^.!?…]+[.!?…]*/g) || [text]).map(t => t.trim()).filter(Boolean);
+  const c = parts[0].indexOf(',', 15);
+  if (parts[0].length > 60 && c > 0 && c < parts[0].length - 15) parts.splice(0, 1, parts[0].slice(0, c + 1), parts[0].slice(c + 1).trim());
   const rate = piper.cfg.audio.sample_rate;
   let next = synthChild(parts[0]);
   for (let i = 0; i < parts.length; i++) {
@@ -1108,7 +1111,7 @@ const COMMANDS = [
   [/(schau|guck)( mal| bitte)* nach unten/, () => lookAt(0, 1, 2500)],
   [/(schau|guck)( mal| bitte)* (mich an|zu mir|geradeaus)/, () => lookAt(0, 0, 2500)],
   [/^(lach|lache)( mal| doch| bitte| laut)*$|^lachen$/, () => { sfxGiggle(); return say(pick(['Hahaha! Hihihi!', 'Hihihi! Hahaha!']), 'laugh'); }],
-  [/^(wein|weine|heul|heule)( mal| doch| bitte)*$|^weinen$|sei traurig|(guck|schau) traurig/, () => say('Oh … jetzt bin ich sehr traurig.', 'sad', 3500)],
+  [/^(wein|weine|heul|heule)( mal| doch| bitte)*$|^weinen$|sei traurig|(guck|schau) traurig/, () => { crying = 4; sfxSob(); return say('Oh … jetzt bin ich sehr traurig.', 'sad', 4000); }],
   [/\b(wink|winke|winken)\b/, () => faceMove('wave')],
   [/dreh dich|drehen|im kreis/, () => faceMove('spin')],
   [/\b(spring|springe|hüpf|hüpfe)\b/, () => faceMove('jump')],
@@ -1563,7 +1566,7 @@ function newSession() {
     if (QUICK(norm(fresh))) { consumed = full.length; clearTimeout(finalizeTimer); utterQuick = false; heardPartial(fresh); utterQuick = false; return; }
     clearTimeout(finalizeTimer);
     const done = () => { if (me !== rec) return; consumed = full.length; heardFinal(fresh); if (IS_SAFARI || IS_IOS) restartRec(); };
-    finalizeTimer = setTimeout(done, lastFinal ? 800 : (IS_SAFARI || IS_IOS ? 1800 : 2000));
+    finalizeTimer = setTimeout(done, lastFinal ? 250 : (IS_SAFARI || IS_IOS ? 1100 : 1200));
   };
   rec.onerror = e => {
     // the device's recognizer is not available (no Siri/dictation, no permission, offline): use EMO's own one
@@ -1609,7 +1612,7 @@ async function startVosk() {
       const conf = words.length ? words.reduce((a, w) => a + (w.conf || 0), 0) / words.length : 1;
       if (conf < .6 && !QUICK(norm(text))) { if (!voskBuf) { utterQuick = false; utterStart = 0; } return; }
       voskBuf = (voskBuf + ' ' + text).trim(); clearTimeout(voskTimer);
-      voskTimer = setTimeout(() => { const all = voskBuf; voskBuf = ''; heardFinal(all); }, 700);
+      voskTimer = setTimeout(() => { const all = voskBuf; voskBuf = ''; heardFinal(all); }, 400);
     });
     const srcNode = a.createMediaStreamSource(micStream);
     micProc = a.createScriptProcessor(4096, 1, 1);

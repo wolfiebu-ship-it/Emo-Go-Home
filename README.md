@@ -4,9 +4,9 @@ Ein kleiner Roboter auf dem Bildschirm, inspiriert von EMO. Man sieht nur seine 
 
 ## Öffnen
 
-**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v16/**
+**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v17/**
 
-Jede neue Version bekommt einen eigenen Link (`v16`, `v17`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 17`.
+Jede neue Version bekommt einen eigenen Link (`v17`, `v18`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 18`.
 
 Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gibt keine Knöpfe und keine Einstellungen.
 
@@ -19,7 +19,7 @@ Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gib
 
 **Mit Claude-Gehirn** redet er über alles und sucht im Internet. Dafür EMO einmal mit diesem Link öffnen (Schlüssel von https://console.anthropic.com/settings/keys):
 
-`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v16/#key=DEIN-SCHLÜSSEL`
+`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v17/#key=DEIN-SCHLÜSSEL`
 
 Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse entfernt. Mit `#ort=Kassel` kann man den Wohnort für das Wetter ändern (Standard: Frankfurt am Main).
 
@@ -49,7 +49,7 @@ Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse en
 | „Zwinker mal“, „Guck traurig/wütend/verliebt“, „Mach Herzaugen“, „Augen zu“ | macht das Gesicht |
 | „Schau nach links/rechts/oben/unten“, „Dreh dich“, „Spring“, „Nick mal“, „Wink mal“ | bewegt sich |
 | „Zähl bis zehn“, „Zähl rückwärts“, „Lach mal“, „Stell dich vor“ | macht das |
-| „Wein mal“, „Sei traurig“ | macht ein trauriges Gesicht und sagt „Oh … jetzt bin ich sehr traurig.“ (ohne Tränen) |
+| „Wein mal“, „Sei traurig“ | macht ein trauriges Gesicht und sagt „Oh … jetzt bin ich sehr traurig.“ und weint |
 | „Vergiss alles“ | fängt ein neues Gespräch an |
 | „Kamera aus“ / „Kamera an“ | schaltet die Fingerpistolen-Erkennung aus oder an |
 
