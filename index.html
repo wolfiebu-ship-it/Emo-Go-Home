@@ -46,11 +46,18 @@ html, body { height: 100%; margin: 0; background: #000; color: var(--ink); font-
 <video id="video" playsinline muted></video>
 
 
+<script src="brain/wissen.js"></script>
 <script>
 'use strict';
 /* ================= Setup ================= */
 const $ = s => document.querySelector(s);
 const EYE = '#3fe6ff', HEART = '#ff4f8b';
+let sick = 0; // 0 = normal cyan, 1 = queasy green
+function eyeCol() {
+  if (sick < .02) return EYE;
+  const a = [0x3f, 0xe6, 0xff], b = [0x9c, 0xe8, 0x5a];
+  return 'rgb(' + a.map((v, i) => Math.round(v + (b[i] - v) * sick)).join(',') + ')';
+}
 const UA = navigator.userAgent;
 const IS_SAFARI = /^((?!chrome|android|crios|fxios|edg).)*safari/i.test(UA);
 const cvs = $('#face'), ctx = cvs.getContext('2d');
@@ -183,16 +190,16 @@ function drawEye(g, cx, cy, side, e, t) {
     g.scale(beat, beat); g.fillStyle = HEART; heartPath(g, w * .62); g.fill(); g.restore(); return;
   }
   if (e.special === 'x') {
-    g.strokeStyle = EYE; g.lineWidth = S * .055; g.lineCap = 'round'; const a = w * .34;
+    g.strokeStyle = eyeCol(); g.lineWidth = S * .055; g.lineCap = 'round'; const a = w * .34;
     g.beginPath(); g.moveTo(-a, -a); g.lineTo(a, a); g.moveTo(a, -a); g.lineTo(-a, a); g.stroke(); g.restore(); return;
   }
   if (e.special === 'spiral') {
-    g.rotate(t / 160 * side); g.strokeStyle = EYE; g.lineWidth = S * .03; g.lineCap = 'round'; g.beginPath();
+    g.rotate(t / (dizzy ? 90 : 160) * side); g.scale(1 + .12 * Math.sin(t / 120), 1 + .12 * Math.sin(t / 120)); g.strokeStyle = eyeCol(); g.lineWidth = S * .034; g.lineCap = 'round'; g.beginPath();
     for (let a = 0; a < Math.PI * 6; a += .15) { const rr2 = a / (Math.PI * 6) * w * .45; const px = Math.cos(a) * rr2, py = Math.sin(a) * rr2; a ? g.lineTo(px, py) : g.moveTo(px, py); }
     g.stroke(); g.restore(); return;
   }
   rr(g, -w / 2, -h / 2, w, h, r); g.save(); g.clip();
-  g.fillStyle = EYE; g.fillRect(-w, -h, w * 2, h * 2);
+  g.fillStyle = eyeCol(); g.fillRect(-w, -h, w * 2, h * 2);
   g.fillStyle = '#000';
   const inX = -side * w / 2 * 1.02, outX = side * w / 2 * 1.02;
   if (p.tIn > .001 || p.tOut > .001) {
@@ -213,7 +220,7 @@ function drawEye(g, cx, cy, side, e, t) {
 function drawHand(g, x, y, side, rot, t) {
   g.save(); g.translate(x, y); g.rotate(rot);
   const u = S * .0078; g.scale(u, u);
-  g.fillStyle = EYE;
+  g.fillStyle = eyeCol();
   rr(g, -11, -6, 22, 20, 7); g.fill();
   const lens = [10.5, 13, 12.5, 10];
   for (let i = 0; i < 4; i++) {
@@ -330,33 +337,47 @@ function startMotion() {
   if (typeof D.requestPermission === 'function') D.requestPermission().then(r => { if (r === 'granted' && !motionOn) { motionOn = true; addEventListener('devicemotion', onMotion); } }).catch(() => {});
   else { motionOn = true; addEventListener('devicemotion', onMotion); }
 }
+let queasyUntil = 0, nextHic = 0;
 function shakeStep(dt, t) {
   shakeEnergy *= Math.exp(-4 * dt);
-  const shaking = shakeEnergy > 9;
+  const shaking = shakeEnergy > 5;
   shakeTime = shaking ? shakeTime + dt : Math.max(0, shakeTime - dt * 2);
-  if (shaking && shakeTime > .45 && !dizzy && !actionLock && started) {
-    dizzy = true; calmTime = 0; stopVoice(); sayToken++; speaking = false;
-    eyes.forEach(e => e.special = 'spiral'); exprUntil = Infinity; sfxGlitch();
-    say(pick(['Huiii! Aufhören! Mir wird schwindelig!', 'Waaah! Nicht schütteln!', 'Hiiilfe, alles dreht sich!']), null);
+  if (shaking && shakeTime > .3 && !dizzy && !actionLock && started) {
+    dizzy = true; calmTime = 0; stopVoice(); sayToken++; speaking = false; asleep = false;
+    eyes.forEach(e => e.special = 'spiral'); exprUntil = Infinity; sfxGlitch(); sfxWobble();
+    say(pick(['Huiii! Aufhören! Mir wird schwindelig!', 'Waaah! Nicht schütteln!', 'Hiiilfe, alles dreht sich!', 'Uaaah! Ich fahr Karussell!']), null);
   }
   if (dizzy) {
     tongue = Math.min(1, tongue + dt * 2.5);
+    sick = Math.min(1, sick + dt * .5);
     eyes.forEach(e => e.special = 'spiral');
-    face.trot = Math.sin(t / 140) * .18 * (shaking ? 1.6 : 1); face.tx = Math.sin(t / 230) * .05;
+    // the whole face wobbles in circles
+    const amp = shaking ? 1.7 : 1;
+    face.k = 10;
+    face.trot = Math.sin(t / 130) * .3 * amp; face.tx = Math.sin(t / 210) * .1 * amp; face.ty = Math.cos(t / 210) * .07 * amp;
+    if (t > nextHic) { nextHic = t + rand(900, 1700); sfxHic(); shake = Math.max(shake, .25); }
     calmTime = shaking ? 0 : calmTime + dt;
-    if (calmTime > 2.6) {
-      dizzy = false; face.trot = 0; face.tx = 0;
+    if (calmTime > 3) {
+      dizzy = false; queasyUntil = t + 4500;
       eyes.forEach(e => e.special = null);
-      say(pick(['Uff … mir ist ganz übel. Bitte nicht mehr schütteln!', 'Bläh … alles dreht sich noch. Mach das bitte nicht nochmal.', 'Puh … mein Bauch … ich hab gar keinen Bauch, aber trotzdem!']), 'sad', 3500);
+      say(pick(['Uff … mir ist ganz übel. Bitte nicht mehr schütteln!', 'Bläh … alles dreht sich noch. Mach das bitte nicht nochmal.', 'Puh … mir ist schlecht … ich hab gar keinen Bauch, aber trotzdem!']), 'sleepy', 4500);
     }
-  } else tongue = Math.max(0, tongue - dt * 2);
+  } else {
+    tongue = Math.max(0, tongue - dt * 1.2);
+    if (t < queasyUntil) {
+      // still swaying and a bit green after the ride
+      face.k = 4; face.trot = Math.sin(t / 400) * .1; face.tx = Math.sin(t / 520) * .04; face.ty = .03;
+      if (t > nextHic) { nextHic = t + rand(1300, 2200); sfxHic(); }
+    } else if (queasyUntil) { queasyUntil = 0; face.trot = 0; face.tx = 0; face.ty = 0; face.k = 7; }
+    sick = Math.max(0, sick - dt * (t < queasyUntil ? .08 : .4));
+  }
 }
 function drawTongue(g, t) {
   if (tongue < .02) return;
-  const L = .2 * S * tongue, w = .12 * S, swing = Math.sin(t / 110) * .45 * (dizzy ? 1 : .3);
+  const L = .2 * S * tongue, w = .12 * S, swing = Math.sin(t / 95) * .6 * (dizzy ? 1 : .35);
   g.save(); g.translate(0, .23 * S);
   // little mouth line
-  g.strokeStyle = EYE; g.lineWidth = Math.max(2, S * .012); g.lineCap = 'round';
+  g.strokeStyle = eyeCol(); g.lineWidth = Math.max(2, S * .012); g.lineCap = 'round';
   g.beginPath(); g.moveTo(-w * .9, 0); g.quadraticCurveTo(0, S * .03, w * .9, 0); g.stroke();
   g.rotate(swing);
   g.fillStyle = '#ff6f91';
@@ -469,6 +490,8 @@ function babble(syllables, mood) {
 }
 function sfxBang() { const a = ac(), t = a.currentTime; noise(t, .35, 2400, 1.1, 'lowpass', 200); tone(160, 40, t, .25, 'sine', .5); }
 function sfxCrack() { const a = ac(), t = a.currentTime; for (let i = 0; i < 6; i++) noise(t + i * .018, .05, 5000, .35, 'highpass'); tone(2400, 300, t, .12, 'sawtooth', .05); }
+function sfxHic() { const a = ac(), t = a.currentTime; tone(500, 1300, t, .08, 'square', .06); }
+function sfxWobble() { const a = ac(), t = a.currentTime; tone(700, 300, t, 1.2, 'triangle', .07, 60); }
 function sfxSlowmo() { const a = ac(), t = a.currentTime; tone(150, 42, t, 1.7, 'sine', .45); noise(t, 1.6, 300, .35, 'lowpass', 80); tone(60, 50, t + .45, .18, 'sine', .5); tone(60, 50, t + .75, .18, 'sine', .45); tone(60, 50, t + 1.3, .18, 'sine', .4); }
 function sfxGlitch() { const a = ac(), t = a.currentTime; for (let i = 0; i < 9; i++) { noise(t + i * .045, .035, rand(800, 6000), .3, 'bandpass'); if (i % 2) tone(rand(200, 1800), rand(100, 900), t + i * .045, .03, 'square', .05); } }
 function sfxRicochet() { const a = ac(), t = a.currentTime; tone(2600, 500, t, .45, 'sine', .12, 40); noise(t, .25, 3000, .25, 'highpass'); }
@@ -753,13 +776,14 @@ async function getHit() {
 async function dodge() {
   const dir = Math.random() < .5 ? -1 : 1, duck = Math.random() < .25;
   const cx = W / 2 + face.x * S, cy = H * FACE_Y + face.y * S;
-  const target = duck ? { x: cx + rand(-.05, .05) * S, y: cy - .02 * S } : { x: cx - dir * .08 * S, y: cy - .03 * S };
+  // aim at where the outer edge of an eye will be once EMO has leaned away: a near miss
+  const target = duck ? { x: cx + rand(-.06, .06) * S, y: cy + .1 * S } : { x: cx - dir * .2 * S, y: cy - .03 * S };
   const passed = new Promise(res => shoot(target, res, 460));
   await wait(110);
   timeTarget = .08; sfxSlowmo();
   setExpr('surprised', 0); eyes.forEach(e => { e.tgt.w = 1.15; e.tgt.h = .75; });
-  face.k = 9;
-  if (duck) { face.ty = .5; face.tsc = .82; } else { face.tx = dir * .55; face.trot = dir * .4; face.tsc = .94; }
+  face.k = 12;
+  if (duck) { face.ty = .3; face.tsc = .85; } else { face.tx = dir * .3; face.trot = dir * .22; face.tsc = .96; }
   hands.wave = 1;
   await wait(1700);
   timeTarget = 1;
@@ -1045,6 +1069,33 @@ async function wikiAnswer(t) {
   } catch (e) { return false; }
   finally { thinking = false; exprUntil = now(); }
 }
+// EMOs Wissensbuch (brain/wissen.js): finds the fact that fits the question best.
+const KB_STOP = new Set('was wer wie wo wann warum wieso weshalb welche welcher welches ist sind war waren der die das den dem des ein eine einen einem einer eines von vom zum zur im in an auf aus mit und oder ich mir mich er sie es mal bitte erzähl erzähle erzählen sag sage kennst weißt weisst über gibt hat haben hast kann können kannst denn eigentlich so noch auch emo viel viele wieviel wie viele etwas was nicht man da hier dort sehr ganz bisschen'.split(' '));
+function kbTokens(t) { return t.split(' ').filter(w => w.length > 1 && !KB_STOP.has(w)); }
+function kbHit(tokens, key) { return tokens.some(w => w === key || (key.length >= 4 && w.startsWith(key)) || (w.length >= 5 && key.startsWith(w))); }
+function knowledgeAnswer(t) {
+  if (!window.WISSEN) return null;
+  const tok = kbTokens(t);
+  if (!tok.length) return null;
+  // capitals: "Was ist die Hauptstadt von Frankreich?"
+  if (tok.some(w => w.startsWith('hauptstadt')) && window.HAUPTSTAEDTE) {
+    for (const [land, stadt] of Object.entries(window.HAUPTSTAEDTE).sort((a, b) => b[0].length - a[0].length)) {
+      if (new RegExp('(^| )' + land.replace(/-/g, '[- ]?') + 's?( |$)').test(t)) { const L = land.split('-').map(x => x[0].toUpperCase() + x.slice(1)).join('-'); return `Die Hauptstadt von ${L === 'Usa' ? 'den USA' : L} ist ${stadt}.`; }
+    }
+  }
+  let best = null, bestScore = 0;
+  for (const e of window.WISSEN) {
+    const [subject, ...hints] = e.k.split(' ');
+    // the more words of the topic match, the more specific (and better) the fact
+    let parts = 0;
+    for (const alt of subject.split('|')) { const ps = alt.split('+'); if (ps.every(part => kbHit(tok, part))) parts = Math.max(parts, ps.length); }
+    if (!parts) continue;
+    const hit = hints.filter(h => kbHit(tok, h)).length;
+    const score = 10 + parts * 2 + hit * 3 - (hints.length - hit) * .5;
+    if (score > bestScore) { bestScore = score; best = e; }
+  }
+  return best ? best.a : null;
+}
 async function localBrain(t, woke) {
   const R = [
     [/\b(wetter|regnet|regen|schneit|temperatur|wie warm|wie kalt|sonne scheint)\b/, () => weatherAnswer(t)],
@@ -1065,6 +1116,8 @@ async function localBrain(t, woke) {
     [/würfel/, () => { const n = 1 + Math.floor(Math.random() * 6); say(`Ich würfle … eine ${n}!`, n === 6 ? 'laugh' : 'curious'); }],
   ];
   for (const [re, fn] of R) if (re.test(t)) return fn();
+  const known = knowledgeAnswer(t);
+  if (known) return say(known, pick(['happy', 'curious', 'smug']), 6000);
   if (QUESTION.test(t) && await wikiAnswer(t)) return;
   if (QUESTION.test(t)) return say(pick(['Hmm, das weiß ich leider nicht.', 'Puh, das ist zu schwer für mein Baby-Gehirn!']), 'curious');
   if (woke) return say('Huch! Ich bin wach. Was hast du gesagt?', 'surprised');
