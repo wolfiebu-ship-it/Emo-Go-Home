@@ -26,7 +26,6 @@
 [hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; background: #000; color: var(--ink); font-family: var(--font-ui); overflow: hidden; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 #face { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-.scan { position: fixed; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0,0,0,.18) 0 1px, transparent 1px 3px); }
 
 #subtitle { position: fixed; left: 16px; right: 16px; bottom: calc(26px + env(safe-area-inset-bottom, 0px)); text-align: center; font: 500 clamp(18px, 3vw, 26px)/1.3 var(--font-ui); color: var(--eye); text-shadow: 0 0 12px rgba(63,230,255,.5); pointer-events: none; text-wrap: balance; }
 #heard { position: fixed; left: 16px; right: 16px; top: calc(16px + env(safe-area-inset-top, 0px)); text-align: center; font: 400 15px var(--font-ui); color: var(--muted); pointer-events: none; }
@@ -40,7 +39,6 @@ html, body { height: 100%; margin: 0; background: #000; color: var(--ink); font-
 </head>
 <body>
 <canvas id="face" aria-label="EMOs Gesicht"></canvas>
-<div class="scan"></div>
 <div id="heard"></div>
 <div id="subtitle" aria-live="polite"></div>
 <div id="ear" title="EMO hört zu"></div>
@@ -134,6 +132,7 @@ function applyExpr(name) {
 }
 function setExpr(name, ms = 2600) { applyExpr(name); exprUntil = ms ? now() + ms : Infinity; }
 function restingExpr() {
+  if (started && !greeted) return 'sleepy';
   if (asleep) return 'asleep';
   if (thinking) return 'thinking';
   if (hands.target > .5) return 'scared';
@@ -380,10 +379,29 @@ function melody(notes, step = .16) { const a = ac(); let t = a.currentTime + .03
 /* ================= EMO voice: natural neural voice (Piper), shifted up to a child's voice ================= */
 // The voice model speaks slower (length) and is played back faster (shift): pitch and formants rise like a child's, the tempo stays natural.
 const CHILD = { shift: 1.27, length: 1.16 };
+const ROBOT = { ring: .28, comb: .35 };
 let voiceAnalyser = null, currentVoiceSrc = null, deviceVoiceActive = false;
 let piper = null, piperLoading = null;
+const asset = p => new URL(p, document.baseURI).href;
+const loadProg = { voice: 0, ears: 0 };
+let readyVoice = false, readyEars = false;
+function showLoad() {
+  if (greeted) return;
+  const pct = Math.min(99, Math.round(USE_VOSK && listenMode === 'vosk' ? (loadProg.voice * 20 + loadProg.ears * 46) / 66 * 100 : loadProg.voice * 100));
+  setSub(`Emo wacht auf … ${pct} %`);
+}
+async function fetchBytes(url, key) {
+  const r = await fetch(asset(url));
+  if (!r.ok) throw new Error(url + ' ' + r.status);
+  const total = +(r.headers.get('content-length') || 0);
+  if (!r.body || !total) { const b = new Uint8Array(await r.arrayBuffer()); loadProg[key] = 1; showLoad(); return b; }
+  const reader = r.body.getReader(), parts = []; let got = 0;
+  for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); got += value.length; loadProg[key] = got / total; showLoad(); }
+  const out = new Uint8Array(got); let o = 0; for (const x of parts) { out.set(x, o); o += x.length; }
+  return out;
+}
 function loadScript(src) {
-  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = asset(src); s.onload = res; s.onerror = rej; document.head.appendChild(s); });
 }
 function loadVoice() {
   if (!piperLoading) piperLoading = (async () => {
@@ -391,9 +409,9 @@ function loadVoice() {
     await loadScript('voice/piper_phonemize.js');
     ort.env.wasm.numThreads = 1;
     ort.env.wasm.proxy = true;
-    ort.env.wasm.wasmPaths = new URL('voice/', location.href).href;
-    const cfg = await (await fetch('voice/de-eva_k-x-low.onnx.json')).json();
-    const sess = await ort.InferenceSession.create('voice/de-eva_k-x-low.onnx', { executionProviders: ['wasm'] });
+    ort.env.wasm.wasmPaths = asset('voice/');
+    const cfg = await (await fetch(asset('voice/de-eva_k-x-low.onnx.json'))).json();
+    const sess = await ort.InferenceSession.create(await fetchBytes('voice/de-eva_k-x-low.onnx', 'voice'), { executionProviders: ['wasm'] });
     let ids = null;
     const phon = await createPiperPhonemize({
       print: line => {
@@ -403,14 +421,15 @@ function loadVoice() {
           out.push(2); ids = (ids || []).concat(out);
         } catch (e) {}
       },
-      printErr: () => {}, locateFile: f => 'voice/' + f,
+      printErr: () => {}, locateFile: f => asset('voice/' + f),
     });
     piper = {
       cfg, sess,
       ids(text) { ids = null; phon.callMain(['-l', cfg.espeak.voice, '--input', JSON.stringify([{ text }]), '--espeak_data', '/espeak-ng-data']); return ids; },
     };
     return true;
-  })().catch(e => { console.warn('voice failed', e); return false; });
+  })().catch(e => { console.warn('voice failed', e); return false; })
+    .then(ok => { readyVoice = true; loadProg.voice = 1; maybeGreet(); return ok; });
   return piperLoading;
 }
 function prepSpeech(text) {
@@ -441,6 +460,15 @@ function playPcm(pcm, rate) {
   const air = a.createBiquadFilter(); air.type = 'highshelf'; air.frequency.value = 4500; air.gain.value = 3;
   const out = a.createGain(); out.gain.value = 1.5;
   src.connect(hp); hp.connect(air); air.connect(out);
+  // a light robot shimmer: ring modulation plus a tiny metallic echo
+  const ring = a.createGain(); ring.gain.value = 0;
+  const carrier = a.createOscillator(); carrier.frequency.value = 64; carrier.connect(ring.gain);
+  const ringMix = a.createGain(); ringMix.gain.value = ROBOT.ring;
+  const comb = a.createDelay(.05); comb.delayTime.value = .0038;
+  const combMix = a.createGain(); combMix.gain.value = ROBOT.comb;
+  air.connect(ring); ring.connect(ringMix); ringMix.connect(out);
+  air.connect(comb); comb.connect(combMix); combMix.connect(out);
+  carrier.start(); setTimeout(() => { try { carrier.stop(); } catch (e) {} }, (buf.duration / CHILD.shift) * 1000 + 600);
   if (!voiceAnalyser) { voiceAnalyser = a.createAnalyser(); voiceAnalyser.fftSize = 512; voiceAnalyser.connect(master); }
   out.connect(voiceAnalyser);
   currentVoiceSrc = src; src.start();
@@ -621,6 +649,21 @@ async function goSleep() {
 /* ================= What EMO hears ================= */
 const BANG = /\b(peng|päng|pang|beng|bang|bäng|boom|bumm|bum|bam|pow|pew|piu|paff|puff|kawumm)\b/;
 const HANDS_UP = /\b(h(ä|a|e)nde?|arme)\s*(nach\s*)?(hoch|oben|in die luft)|\bhands? up\b|\büberfall\b/;
+function lev(a, b) {
+  const m = a.length, n = b.length; let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) { const cur = [i]; for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = cur; }
+  return prev[n];
+}
+const simp = w => w.replace(/ä/g, 'e').replace(/[^a-zöüß]/g, '');
+function fuzzyHandsUp(t) {
+  const w = t.split(' ').map(simp);
+  for (let i = 0; i < w.length; i++) for (const n of [1, 2, 3]) {
+    const s = w.slice(i, i + n).join('');
+    if (s.length >= 6 && s.length <= 12 && lev(s, 'hendehoch') <= 2) return true;
+  }
+  return false;
+}
+const fuzzyBang = t => t.split(' ').map(simp).some(x => x.length >= 3 && x.length <= 6 && ['peng', 'beng', 'bang', 'pang', 'bumm', 'boom', 'bum'].some(k => lev(x, k) <= 1));
 const HANDS_DOWN = /\b(h(ä|a|e)nde?|arme)\s*(wieder\s*)?(runter|nach unten)/;
 const norm = s => s.toLowerCase().replace(/[!?.,;:"'„“]/g, ' ').replace(/\s+/g, ' ').trim().replace(/^(hey |hallo |ok |okay |du )?(emo|emma|ema|nemo|imo|e-mo)\b\s*/, '$1').trim();
 const ACTION_RULES = [
@@ -635,10 +678,12 @@ const ACTION_RULES = [
   [/\b(sei still|psst|halt (die klappe|den mund)|ruhe)\b/, () => { stopVoice(); sayToken++; speaking = false; setSub(''); setExpr('sad', 1500); }],
 ];
 
+const handsUpSaid = t => HANDS_UP.test(t) || fuzzyHandsUp(t);
+const bangSaid = t => BANG.test(t) || (hands.target > .5 && fuzzyBang(t));
 function quickAction(t) {
   if (HANDS_DOWN.test(t)) { lowerHands(); return true; }
-  if (HANDS_UP.test(t)) { raiseHands(false); const rest = t.replace(HANDS_UP, ''); if (BANG.test(rest)) setTimeout(bang, 900); return true; }
-  if (BANG.test(t)) { bang(); return true; }
+  if (handsUpSaid(t)) { raiseHands(false); const rest = t.replace(HANDS_UP, ''); if (BANG.test(rest)) setTimeout(bang, 900); return true; }
+  if (bangSaid(t)) { bang(); return true; }
   return false;
 }
 function isEcho(t) {
@@ -940,31 +985,35 @@ const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const IS_IOS = /iPhone|iPad|iPod/.test(UA) || (/Macintosh/.test(UA) && navigator.maxTouchPoints > 1);
 const USE_VOSK = IS_SAFARI || IS_IOS || !SR;
 let rec = null, micOn = false, listenMode = '', consumed = 0, finalizeTimer = 0, restartTimer = 0;
-const QUICK = t => HANDS_UP.test(t) || BANG.test(t) || HANDS_DOWN.test(t);
+const QUICK = t => handsUpSaid(t) || bangSaid(t) || HANDS_DOWN.test(t);
 
 // shared by both recognizers
-let utterQuick = false;
+let utterQuick = false, utterStart = 0, utterDuringSpeech = false;
 function heardPartial(txt) {
   const t = norm(txt || '');
+  if (t && !utterStart) { utterStart = now(); utterDuringSpeech = speaking || now() - lastSaidEnd < 600; }
   if (!t || utterQuick || !QUICK(t) || isEcho(t)) return;
   utterQuick = true; setHeard(txt); activity(); quickAction(t);
 }
 function heardFinal(txt) {
-  const was = utterQuick; utterQuick = false;
+  const was = utterQuick, duringSpeech = utterStart ? utterDuringSpeech : (speaking || now() - lastSaidEnd < 600);
+  utterQuick = false; utterStart = 0;
   txt = (txt || '').replace(/\[unk\]/g, '').trim();
   if (!txt || was) return;
-  // don't let EMO hear (and interrupt) himself
-  if (listenMode === 'vosk' && (speaking || now() - lastSaidEnd < 900)) return;
   const t = norm(txt);
+  if (QUICK(t) && !isEcho(t)) { setHeard(txt); activity(); quickAction(t); return; }
+  // something that started while EMO was talking is most likely EMO hearing himself
+  if (listenMode === 'vosk' && duringSpeech) return;
   // with hands up, any short shout counts as "Peng"
   if (hands.target > .5 && !actionLock && t.split(' ').length <= 2 && t.length <= 9 && !isEcho(t)) { setHeard(txt); return bang(); }
   handleInput(txt);
 }
 
+function earsReady() { readyEars = true; maybeGreet(); }
 function startListening() {
-  if (micOn) return;
-  if (USE_VOSK) startVosk().then(ok => { if (!ok && SR && !IS_IOS) startMic(); });
-  else startMic();
+  if (micOn || voskLoading) return;
+  if (USE_VOSK) startVosk().then(ok => { if (!ok && SR && !IS_IOS) startMic(); earsReady(); });
+  else { startMic(); earsReady(); }
 }
 
 /* --- Web Speech API --- */
@@ -994,7 +1043,7 @@ function newSession() {
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
       micOn = false; listenMode = ''; earState();
       // the browser's recognizer is not available: use EMO's own one
-      startVosk();
+      readyEars = false; startVosk().then(earsReady);
     }
   };
   rec.onend = () => { if (me === rec && micOn && listenMode === 'web') restartTimer = setTimeout(newSession, 250); };
@@ -1018,7 +1067,8 @@ async function startVosk() {
   tryAudio();
   try {
     await loadScript('listen/vosk.js');
-    voskModel = await Vosk.createModel('listen/vosk-model-small-de.tar.gz');
+    const modelBytes = await fetchBytes('listen/vosk-model-small-de.tar.gz', 'ears');
+    voskModel = await Vosk.createModel(URL.createObjectURL(new Blob([modelBytes])));
     const a = ac();
     voskRec = new voskModel.KaldiRecognizer(a.sampleRate);
     voskRec.on('partialresult', m => heardPartial(m.result.partial));
@@ -1039,13 +1089,26 @@ async function startVosk() {
     return false;
   }
 }
-// a loud bang ("PENG!", a clap) while the hands are up counts as a shot
+// While the hands are up, any short shout ("Peng!", "Bumm!", a clap) counts as a shot.
+// The recognizer doesn't know "Peng" as a word, so this listens for a short burst of sound instead.
+let noiseFloor = .01, segLoud = false, segStart = 0, segLast = 0;
 function loudCheck(d) {
   let s = 0; for (let i = 0; i < d.length; i++) s += d[i] * d[i];
   const rms = Math.sqrt(s / d.length), t = now();
-  const spike = rms > .32 && rms > loudAvg * 6;
+  const armed = hands.target > .5 && hands.t > .7 && !speaking && t - lastSaidEnd > 700 && !actionLock && t - lastLoud > 1500;
+  if (rms > Math.max(.02, noiseFloor * 3.5)) {
+    if (!segLoud) { segLoud = true; segStart = t; }
+    segLast = t;
+    if (armed && rms > .3 && rms > loudAvg * 6) { lastLoud = t; segLoud = false; bang(); }
+  } else {
+    noiseFloor = noiseFloor * .97 + rms * .03;
+    if (segLoud && t - segLast > 250) {
+      segLoud = false;
+      const dur = segLast - segStart;
+      if (armed && dur > 60 && dur < 650) { lastLoud = t; bang(); }
+    }
+  }
   loudAvg = loudAvg * .95 + rms * .05;
-  if (spike && hands.target > .5 && hands.t > .7 && !speaking && !actionLock && t - lastLoud > 1500) { lastLoud = t; bang(); }
 }
 
 /* ================= Camera: finger-gun detection ================= */
@@ -1119,26 +1182,29 @@ let audioOk = false, greeted = false;
 function audioReady() { return !!AC && AC.state === 'running'; }
 // Safari lets a page play sound once it is using the microphone; other browsers wait for the first touch.
 function tryAudio() {
-  try { ac(); AC.resume().then(() => { if (audioReady() && !audioOk) { audioOk = true; setSub(''); greet(); } }).catch(() => {}); } catch (e) {}
+  try { ac(); AC.resume().then(maybeGreet).catch(() => {}); } catch (e) {}
+}
+function maybeGreet() {
+  if (greeted || !readyVoice || !readyEars) return;
+  if (audioReady()) { audioOk = true; greet(); }
+  else setSub('Tipp mich einmal an, dann kann ich sprechen!');
 }
 async function boot() {
   started = true; asleep = false; bootT = 0; activity();
-  applyExpr('neutral');
+  applyExpr('sleepy'); exprUntil = Infinity;
   try { ac(); } catch (e) {}
   try { if (navigator.audioSession) navigator.audioSession.type = 'play-and-record'; } catch (e) {}
+  showLoad();
   loadVoice();
   startListening();
   if (settings.cam) startCam();
   await wait(1500);
   tryAudio();
-  await wait(300);
-  if (audioReady()) { audioOk = true; greet(); }
-  else if (!audioOk) setSub('Tipp mich einmal an, dann kann ich sprechen!');
 }
-async function greet() {
+function greet() {
   if (greeted) return; greeted = true;
+  setSub(''); exprUntil = now();
   sfxPowerUp();
-  await loadVoice();
   say(pick(['Hallo! Ich bin Emo! Frag mich was!', 'Hi! Ich bin wach! Was machen wir?', 'Huhu! Da bist du ja!']), 'happy');
 }
 // Browsers only allow sound after the first touch. Any touch, click or key unlocks it once.
@@ -1148,8 +1214,7 @@ function unlock() {
   if (!audioOk) {
     audioOk = true;
     if ('speechSynthesis' in window) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); }
-    setSub('');
-    setTimeout(greet, 250);
+    setTimeout(maybeGreet, 250);
     return true;
   }
   return false;

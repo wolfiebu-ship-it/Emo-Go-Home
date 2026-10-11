@@ -4,7 +4,9 @@ Ein kleiner Roboter auf dem Bildschirm, inspiriert von EMO. Man sieht nur seine 
 
 ## Öffnen
 
-**https://wolfiebu-ship-it.github.io/Emo-Go-Home/**
+**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v6/**
+
+Jede neue Version bekommt einen eigenen Link (`v6`, `v7`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 7`.
 
 Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gibt keine Knöpfe und keine Einstellungen.
 
@@ -17,7 +19,7 @@ Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gib
 
 **Mit Claude-Gehirn** redet er über alles und sucht im Internet. Dafür EMO einmal mit diesem Link öffnen (Schlüssel von https://console.anthropic.com/settings/keys):
 
-`https://wolfiebu-ship-it.github.io/Emo-Go-Home/#key=DEIN-SCHLÜSSEL`
+`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v6/#key=DEIN-SCHLÜSSEL`
 
 Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse entfernt. Mit `#ort=Kassel` kann man den Wohnort für das Wetter ändern (Standard: Frankfurt am Main).
 
@@ -27,7 +29,7 @@ Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse en
 | --- | --- |
 | Irgendeine Frage („Wie wird das Wetter morgen?“, „Wie groß ist die Sonne?“, „Wer hat gestern gewonnen?“) | antwortet als KI, mit Wetter-Daten und Websuche |
 | „Emo, Hände hoch!“ oder Fingerpistole in die Kamera zeigen | hebt sofort ängstlich die Hände |
-| „Peng!“, „Bang!“, „Boom!“ oder Fingerpistole hochzucken lassen | wird ins Auge getroffen (Riss, X-Augen, kippt um) oder weicht aus („Daneben!“) |
+| „Peng!“, „Bang!“, „Boom!“ (jeder kurze Ruf, wenn die Hände oben sind) oder Fingerpistole hochzucken lassen | wird ins Auge getroffen (Riss, X-Augen, kippt um) oder weicht aus („Daneben!“) |
 | „Hände runter“ | nimmt die Hände runter |
 | „Erzähl einen Witz“ | erzählt jedes Mal einen anderen Witz |
 | „Tanz mal“, „Sing was“ | tanzt oder singt |

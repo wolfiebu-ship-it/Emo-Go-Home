@@ -1,0 +1,1240 @@
+<!doctype html>
+<html lang="de">
+<head>
+<base href="../">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#000000">
+<title>EMO Go Home</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&display=swap">
+<style>
+/* Layout: one full-bleed black robot screen. No controls, no panels: you only talk to EMO. */
+:root {
+  --screen: #020709;
+  --eye: #3fe6ff;
+  --ink: #d8f8ff;
+  --muted: #6d97a3;
+  --panel: #08161b;
+  --line: #17323c;
+  --warn: #ffb35c;
+  --font-ui: 'Fredoka', ui-rounded, 'Segoe UI', system-ui, sans-serif;
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; background: #000; color: var(--ink); font-family: var(--font-ui); overflow: hidden; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+#face { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+#subtitle { position: fixed; left: 16px; right: 16px; bottom: calc(26px + env(safe-area-inset-bottom, 0px)); text-align: center; font: 500 clamp(18px, 3vw, 26px)/1.3 var(--font-ui); color: var(--eye); text-shadow: 0 0 12px rgba(63,230,255,.5); pointer-events: none; text-wrap: balance; }
+#heard { position: fixed; left: 16px; right: 16px; top: calc(16px + env(safe-area-inset-top, 0px)); text-align: center; font: 400 15px var(--font-ui); color: var(--muted); pointer-events: none; }
+#ear { position: fixed; right: 16px; top: calc(16px + env(safe-area-inset-top, 0px)); width: 10px; height: 10px; border-radius: 50%; background: var(--line); pointer-events: none; transition: background .2s, box-shadow .2s; }
+#ear.on { background: var(--eye); box-shadow: 0 0 10px var(--eye); }
+#ear.hot { background: var(--warn); box-shadow: 0 0 12px var(--warn); }
+#hint { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: min(460px, calc(100% - 32px)); background: var(--panel); border: 1px solid var(--warn); color: var(--ink); border-radius: 16px; padding: 14px 18px; font: 400 16px/1.45 var(--font-ui); text-align: center; pointer-events: none; }
+#video { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+</style>
+</head>
+<body>
+<canvas id="face" aria-label="EMOs Gesicht"></canvas>
+<div id="heard"></div>
+<div id="subtitle" aria-live="polite"></div>
+<div id="ear" title="EMO hört zu"></div>
+<div id="hint" role="status" hidden></div>
+<video id="video" playsinline muted></video>
+
+
+<script>
+'use strict';
+/* ================= Setup ================= */
+const $ = s => document.querySelector(s);
+const EYE = '#3fe6ff', HEART = '#ff4f8b';
+const UA = navigator.userAgent;
+const IS_SAFARI = /^((?!chrome|android|crios|fxios|edg).)*safari/i.test(UA);
+const cvs = $('#face'), ctx = cvs.getContext('2d');
+const off = document.createElement('canvas'), octx = off.getContext('2d');
+const glow = document.createElement('canvas'), gctx = glow.getContext('2d');
+let W = 0, H = 0, DPR = 1, S = 1;
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = innerWidth; H = innerHeight;
+  for (const c of [cvs, off]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
+  glow.width = Math.max(1, Math.round(W / 4)); glow.height = Math.max(1, Math.round(H / 4));
+  S = Math.min(W / 1.75, H * 0.9);
+}
+addEventListener('resize', resize); resize();
+
+const now = () => performance.now();
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const rand = (a, b) => a + Math.random() * (b - a);
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const ease = (k, dt) => 1 - Math.exp(-k * dt);
+const lerp = (a, b, t) => a + (b - a) * t;
+
+/* ================= Settings ================= */
+const settings = { voiceMode: 'child', voiceName: '', pitch: 72, rate: 1.12, dodge: 45, cam: false, apiKey: '', place: '' };
+try {
+  const old = JSON.parse(localStorage.getItem('emo-settings2') || '{}');
+  if (old.apiKey) settings.apiKey = old.apiKey;
+  if (old.place) settings.place = old.place;
+  Object.assign(settings, JSON.parse(localStorage.getItem('emo-settings3') || '{}'));
+} catch (e) {}
+function saveSettings() { try { localStorage.setItem('emo-settings3', JSON.stringify(settings)); } catch (e) {} }
+
+/* ================= Face state ================= */
+const POSE_KEYS = ['w', 'h', 'r', 'tIn', 'tOut', 'bot', 'happy', 'dy'];
+const basePose = () => ({ w: 1, h: 1, r: 1, tIn: 0, tOut: 0, bot: 0, happy: 0, dy: 0 });
+const EXPR = {
+  neutral: {},
+  happy: { happy: .7, w: 1.06, h: .95 },
+  laugh: { happy: .85, w: 1.12, h: .85 },
+  sad: { tOut: .45, tIn: .05, h: .85, dy: .07 },
+  angry: { tIn: .52, tOut: .06, h: .9 },
+  surprised: { h: 1.18, w: .98, r: 1.5 },
+  scared: { w: .74, h: .82, r: 1.6 },
+  sleepy: { tIn: .56, tOut: .6, bot: .1 },
+  asleep: { tIn: .94, tOut: .94, dy: .05 },
+  squint: { tIn: .32, tOut: .32, bot: .3, w: 1.15 },
+  smug: [{ tIn: .4, tOut: .3, happy: .35 }, { tIn: .2, tOut: .1, happy: .55 }],
+  curious: [{ h: 1.12, w: 1.04 }, { tIn: .25, tOut: .38, h: .9 }],
+  thinking: [{ tIn: .32, tOut: .12, h: .95 }, { h: 1.06 }],
+  pain: { tIn: .45, tOut: .18, bot: .35 },
+  wink: [{ happy: .6 }, { tIn: .94, tOut: .94 }],
+  love: { special: 'heart' },
+  dead: { special: 'x' },
+  dizzy: { special: 'spiral' },
+};
+const eyes = [0, 1].map(() => ({ cur: basePose(), tgt: basePose(), special: null, crack: null }));
+const gaze = { x: 0, y: 0, tx: 0, ty: 0 };
+const face = { x: 0, y: 0, rot: 0, sc: 1, tx: 0, ty: 0, trot: 0, tsc: 1, k: 7 };
+const hands = { t: 0, v: 0, target: 0, wave: 0, tremble: 0, since: 0 };
+let blinkPhase = -1, nextBlink = now() + 2500;
+let nextSaccade = now() + 1500;
+let exprName = 'neutral', exprUntil = Infinity;
+let shake = 0, flash = 0;
+let bullets = [], screenCracks = [], sparks = [];
+let thinking = false, speaking = false, talkLevel = 0;
+let actionLock = false;
+let asleep = true, lastActive = now();
+let bootT = 0, started = false;
+
+function applyExpr(name) {
+  const def = EXPR[name] || EXPR.neutral;
+  const pair = Array.isArray(def) ? def : [def, def];
+  exprName = name;
+  eyes.forEach((e, i) => {
+    const p = Object.assign(basePose(), pair[i]);
+    POSE_KEYS.forEach(k => e.tgt[k] = p[k]);
+    e.special = pair[i].special || null;
+  });
+}
+function setExpr(name, ms = 2600) { applyExpr(name); exprUntil = ms ? now() + ms : Infinity; }
+function restingExpr() {
+  if (started && !greeted) return 'sleepy';
+  if (asleep) return 'asleep';
+  if (thinking) return 'thinking';
+  if (hands.target > .5) return 'scared';
+  if (now() - lastActive > 90000) return 'sleepy';
+  return 'neutral';
+}
+function lookAt(x, y, ms = 0) { gaze.tx = x; gaze.ty = y; if (ms) nextSaccade = now() + ms; }
+
+/* ================= Drawing ================= */
+function rr(g, x, y, w, h, r) {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+}
+function heartPath(g, s) {
+  g.beginPath(); g.moveTo(0, s * .35);
+  g.bezierCurveTo(-s * 1.1, -s * .35, -s * .55, -s * 1.05, 0, -s * .45);
+  g.bezierCurveTo(s * .55, -s * 1.05, s * 1.1, -s * .35, 0, s * .35); g.closePath();
+}
+function makeCrackLines(radius, n) {
+  const lines = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + rand(-.3, .3); let x = 0, y = 0; const pts = [[0, 0]];
+    const segs = 3 + Math.floor(Math.random() * 3);
+    for (let s = 0; s < segs; s++) { const d = radius * rand(.18, .38); const aa = a + rand(-.5, .5); x += Math.cos(aa) * d; y += Math.sin(aa) * d; pts.push([x, y]); }
+    lines.push(pts);
+  }
+  return lines;
+}
+function strokeLines(g, lines) { for (const l of lines) { g.beginPath(); l.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.stroke(); } }
+
+function drawEye(g, cx, cy, side, e, t) {
+  const p = e.cur;
+  const blink = blinkPhase >= 0 ? Math.sin(blinkPhase * Math.PI) : 0;
+  const talk = 1 + talkLevel * .16;
+  const persp = 1 + gaze.x * side * .1;
+  const w = .3 * S * p.w * persp;
+  const h = .37 * S * p.h * talk * persp * (1 - blink * .9) * (0.08 + .92 * bootT);
+  const r = Math.min(w, h) * .24 * p.r;
+  g.save(); g.translate(cx, cy + p.dy * S);
+  if (e.special === 'heart') {
+    const beat = 1 + Math.sin(t / 140) * .07;
+    g.scale(beat, beat); g.fillStyle = HEART; heartPath(g, w * .62); g.fill(); g.restore(); return;
+  }
+  if (e.special === 'x') {
+    g.strokeStyle = EYE; g.lineWidth = S * .055; g.lineCap = 'round'; const a = w * .34;
+    g.beginPath(); g.moveTo(-a, -a); g.lineTo(a, a); g.moveTo(a, -a); g.lineTo(-a, a); g.stroke(); g.restore(); return;
+  }
+  if (e.special === 'spiral') {
+    g.rotate(t / 160 * side); g.strokeStyle = EYE; g.lineWidth = S * .03; g.lineCap = 'round'; g.beginPath();
+    for (let a = 0; a < Math.PI * 6; a += .15) { const rr2 = a / (Math.PI * 6) * w * .45; const px = Math.cos(a) * rr2, py = Math.sin(a) * rr2; a ? g.lineTo(px, py) : g.moveTo(px, py); }
+    g.stroke(); g.restore(); return;
+  }
+  rr(g, -w / 2, -h / 2, w, h, r); g.save(); g.clip();
+  g.fillStyle = EYE; g.fillRect(-w, -h, w * 2, h * 2);
+  g.fillStyle = '#000';
+  const inX = -side * w / 2 * 1.02, outX = side * w / 2 * 1.02;
+  if (p.tIn > .001 || p.tOut > .001) {
+    g.beginPath(); g.moveTo(inX, -h); g.lineTo(outX, -h); g.lineTo(outX, -h / 2 + p.tOut * h); g.lineTo(inX, -h / 2 + p.tIn * h); g.closePath(); g.fill();
+  }
+  if (p.bot > .001) g.fillRect(-w, h / 2 - p.bot * h, w * 2, h);
+  if (p.happy > .001) { g.beginPath(); g.ellipse(0, h / 2 + h * .56 - p.happy * h * .64, w * .8, h * .56, 0, 0, Math.PI * 2); g.fill(); }
+  if (e.crack) {
+    g.globalAlpha = Math.max(0, e.crack.alpha); g.translate(e.crack.x * w, e.crack.y * h);
+    g.strokeStyle = '#000'; g.lineWidth = Math.max(2, S * .008); g.lineJoin = 'round'; strokeLines(g, e.crack.lines);
+    g.beginPath(); const hr = S * .045;
+    for (let i = 0; i <= 12; i++) { const a = i / 12 * Math.PI * 2; const rad = hr * (i % 2 ? .7 : 1.1); i ? g.lineTo(Math.cos(a) * rad, Math.sin(a) * rad) : g.moveTo(Math.cos(a) * rad, Math.sin(a) * rad); }
+    g.fill(); g.globalAlpha = 1;
+  }
+  g.restore(); g.restore();
+}
+
+function drawHand(g, x, y, side, rot, t) {
+  g.save(); g.translate(x, y); g.rotate(rot);
+  const u = S * .0078; g.scale(u, u);
+  g.fillStyle = EYE;
+  rr(g, -11, -6, 22, 20, 7); g.fill();
+  const lens = [10.5, 13, 12.5, 10];
+  for (let i = 0; i < 4; i++) {
+    const fx = side > 0 ? -8.25 + i * 5.5 : 8.25 - i * 5.5;
+    const wig = Math.sin(t / 110 + i * 1.3) * 1.4 * hands.wave;
+    rr(g, fx - 2.5, -6 - lens[i] + wig, 5, lens[i] + 5, 2.5); g.fill();
+  }
+  g.save(); g.translate(-side * 10.5, 5); g.rotate(-side * .95); rr(g, -2.7, -12.5, 5.4, 14, 2.7); g.fill(); g.restore();
+  g.restore();
+}
+
+function render(t) {
+  const g = octx;
+  g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, off.width, off.height);
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const sx = (Math.random() - .5) * shake * 18, sy = (Math.random() - .5) * shake * 18;
+  g.save();
+  g.translate(W / 2 + face.x * S + sx, H / 2 + face.y * S + sy); g.rotate(face.rot); g.scale(face.sc, face.sc);
+  const gx = gaze.x * .085 * S, gy = gaze.y * .075 * S;
+  for (let i = 0; i < 2; i++) { const side = i ? 1 : -1; drawEye(g, side * .27 * S + gx, gy - .02 * S, side, eyes[i], t); }
+  if (hands.t > .01) {
+    const downY = H * .5 / face.sc + .3 * S, upY = -.02 * S;
+    const y = lerp(downY, upY, hands.t);
+    for (const side of [-1, 1]) {
+      const trem = Math.sin(t / 22 + side) * hands.tremble * S * .006;
+      drawHand(g, side * .76 * S + trem, y + Math.sin(t / 180 + side) * S * .01, side, side * (.12 + Math.sin(t / 160) * .14 * hands.wave), t);
+    }
+  }
+  if (thinking) {
+    for (let i = 0; i < 3; i++) { const a = (Math.sin(t / 200 - i * .9) + 1) / 2; g.globalAlpha = .3 + a * .7; g.fillStyle = EYE; g.beginPath(); g.arc((i - 1) * .07 * S, .3 * S, .018 * S, 0, Math.PI * 2); g.fill(); }
+    g.globalAlpha = 1;
+  }
+  if (asleep) {
+    g.fillStyle = EYE; g.textAlign = 'center';
+    for (let i = 0; i < 3; i++) { const ph = ((t / 1400) + i / 3) % 1; g.globalAlpha = Math.sin(ph * Math.PI); g.font = `600 ${Math.round(S * (.06 + i * .02))}px Fredoka, sans-serif`; g.fillText('Z', .5 * S + ph * .2 * S, -.25 * S - ph * .35 * S); }
+    g.globalAlpha = 1;
+  }
+  g.restore();
+
+  for (const c of screenCracks) {
+    g.save(); g.translate(c.x, c.y); g.globalAlpha = Math.max(0, c.alpha) * .85; g.strokeStyle = '#e9fbff'; g.lineWidth = 1.6; g.lineJoin = 'round'; strokeLines(g, c.lines);
+    g.beginPath(); g.arc(0, 0, S * .012, 0, Math.PI * 2); g.fillStyle = '#e9fbff'; g.fill(); g.restore();
+  }
+  for (const b of bullets) {
+    const k = Math.min(1, b.p), x = lerp(b.x0, b.x1, k), y = lerp(b.y0, b.y1, k), r = lerp(b.r0, b.r1, k);
+    const tx = lerp(b.x0, b.x1, Math.max(0, k - .2)), ty = lerp(b.y0, b.y1, Math.max(0, k - .2));
+    const grad = g.createLinearGradient(tx, ty, x, y); grad.addColorStop(0, 'rgba(255,220,140,0)'); grad.addColorStop(1, 'rgba(255,230,170,.9)');
+    g.strokeStyle = grad; g.lineWidth = r * 1.2; g.lineCap = 'round'; g.beginPath(); g.moveTo(tx, ty); g.lineTo(x, y); g.stroke();
+    g.fillStyle = '#fff3d6'; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+  }
+  for (const s of sparks) { g.globalAlpha = Math.max(0, s.life); g.fillStyle = s.c; g.beginPath(); g.arc(s.x, s.y, s.r, 0, Math.PI * 2); g.fill(); }
+  g.globalAlpha = 1;
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cvs.width, cvs.height);
+  gctx.clearRect(0, 0, glow.width, glow.height);
+  if ('filter' in gctx) gctx.filter = 'blur(3px)';
+  gctx.drawImage(off, 0, 0, glow.width, glow.height);
+  ctx.globalAlpha = .85; ctx.drawImage(glow, 0, 0, cvs.width, cvs.height); ctx.globalAlpha = 1;
+  ctx.drawImage(off, 0, 0);
+  if (flash > .01) { ctx.fillStyle = `rgba(255,248,225,${flash * .8})`; ctx.fillRect(0, 0, cvs.width, cvs.height); }
+}
+
+/* ================= Update loop ================= */
+let levelBuf = null;
+function update(dt, t) {
+  if (bootT < 1 && started) bootT = Math.min(1, bootT + dt * 1.6);
+  for (const e of eyes) for (const k of POSE_KEYS) e.cur[k] += (e.tgt[k] - e.cur[k]) * ease(13, dt);
+  gaze.x += (gaze.tx - gaze.x) * ease(11, dt); gaze.y += (gaze.ty - gaze.y) * ease(11, dt);
+  face.x += (face.tx - face.x) * ease(face.k, dt); face.y += (face.ty - face.y) * ease(face.k, dt);
+  face.rot += (face.trot - face.rot) * ease(face.k, dt); face.sc += (face.tsc - face.sc) * ease(face.k, dt);
+  hands.v += (hands.target - hands.t) * 140 * dt; hands.v *= Math.exp(-9 * dt); hands.t += hands.v * dt;
+
+  // eyes bounce with the voice
+  let lvl = 0;
+  if (voiceAnalyser) {
+    if (!levelBuf) levelBuf = new Float32Array(voiceAnalyser.fftSize);
+    voiceAnalyser.getFloatTimeDomainData(levelBuf);
+    let s = 0; for (let i = 0; i < levelBuf.length; i++) s += levelBuf[i] * levelBuf[i];
+    lvl = Math.min(1, Math.sqrt(s / levelBuf.length) * 5);
+  }
+  if (speaking && deviceVoiceActive) lvl = .35 + Math.sin(t / 70) * .3;
+  talkLevel += (lvl - talkLevel) * ease(20, dt);
+
+  if (blinkPhase >= 0) { blinkPhase += dt / .16; if (blinkPhase >= 1) blinkPhase = -1; }
+  else if (t > nextBlink && !asleep) { blinkPhase = 0; nextBlink = t + rand(1800, 5500) * (Math.random() < .15 ? .1 : 1); }
+
+  if (t > nextSaccade && !actionLock) {
+    if (camHandSeen > t - 500) { /* camera drives the gaze */ }
+    else if (thinking) lookAt(rand(.4, .8), rand(-.8, -.5));
+    else if (hands.target > .5 || speaking) lookAt(rand(-.15, .15), rand(-.1, .1));
+    else lookAt(Math.random() < .35 ? 0 : rand(-1, 1), Math.random() < .5 ? 0 : rand(-.8, .6));
+    nextSaccade = t + rand(900, 3800);
+  }
+  if (t > exprUntil) { applyExpr(restingExpr()); exprUntil = Infinity; }
+  if (exprUntil === Infinity && !actionLock) { const r = restingExpr(); if (r !== exprName) applyExpr(r); }
+
+  if (!asleep && started && !actionLock && !speaking && !thinking && t - lastActive > 180000) { asleep = true; applyExpr('asleep'); setSub(''); }
+  if (asleep && started && Math.random() < dt * .25) sfxSnore();
+
+  if (hands.target > .5 && !actionLock && !speaking && t - hands.since > 15000) { hands.since = t + 1e9; lowerHands(); }
+
+  shake *= Math.exp(-7 * dt); flash *= Math.exp(-9 * dt);
+  for (const b of bullets) { b.p += dt * 1000 / b.dur; if (b.p >= 1 && !b.done) { b.done = true; b.onHit && b.onHit(); } }
+  bullets = bullets.filter(b => b.p < 1.05);
+  for (const c of screenCracks) if (t > c.fadeAt) c.alpha -= dt * .8;
+  screenCracks = screenCracks.filter(c => c.alpha > 0);
+  for (const s of sparks) { s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 900 * dt; s.life -= dt * 1.6; }
+  sparks = sparks.filter(s => s.life > 0);
+  for (const e of eyes) if (e.crack && e.crack.fading) { e.crack.alpha -= dt * .9; if (e.crack.alpha <= 0) e.crack = null; }
+
+  camStep(t);
+}
+let lastT = now();
+function frame(t) { const dt = Math.min(.05, (t - lastT) / 1000); lastT = t; update(dt, t); render(t); requestAnimationFrame(frame); }
+applyExpr('asleep');
+requestAnimationFrame(frame);
+
+/* ================= Sound effects ================= */
+let AC = null, master = null;
+function ac() {
+  if (!AC) {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    const comp = AC.createDynamicsCompressor(); comp.connect(AC.destination);
+    master = AC.createGain(); master.gain.value = 1; master.connect(comp);
+  }
+  if (AC.state === 'suspended') AC.resume();
+  return AC;
+}
+function tone(f0, f1, start, dur, type = 'square', vol = .1, vib = 0) {
+  const a = ac(), o = a.createOscillator(), gn = a.createGain(), lp = a.createBiquadFilter();
+  o.type = type; o.frequency.setValueAtTime(f0, start); o.frequency.exponentialRampToValueAtTime(Math.max(30, f1), start + dur);
+  if (vib) { const l = a.createOscillator(), lg = a.createGain(); l.frequency.value = 28; lg.gain.value = vib; l.connect(lg); lg.connect(o.frequency); l.start(start); l.stop(start + dur); }
+  lp.type = 'lowpass'; lp.frequency.value = 3200;
+  gn.gain.setValueAtTime(0, start); gn.gain.linearRampToValueAtTime(vol, start + .012); gn.gain.setValueAtTime(vol, start + dur * .7); gn.gain.linearRampToValueAtTime(0, start + dur);
+  o.connect(lp); lp.connect(gn); gn.connect(master); o.start(start); o.stop(start + dur + .02);
+}
+function noise(start, dur, freq, vol, type = 'lowpass', freqEnd) {
+  const a = ac(), len = Math.ceil(a.sampleRate * dur), buf = a.createBuffer(1, len, a.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2);
+  const src = a.createBufferSource(), f = a.createBiquadFilter(), gn = a.createGain();
+  src.buffer = buf; f.type = type; f.frequency.setValueAtTime(freq, start); if (freqEnd) f.frequency.exponentialRampToValueAtTime(freqEnd, start + dur);
+  gn.gain.value = vol; src.connect(f); f.connect(gn); gn.connect(master); src.start(start);
+}
+const MOOD_PITCH = { happy: 1.25, laugh: 1.35, love: 1.2, sad: .75, scared: 1.4, angry: .85, surprised: 1.3, sleepy: .7, pain: 1.1, smug: 1.1 };
+function babble(syllables, mood) {
+  const a = ac(); let t = a.currentTime + .02; const base = 900 * (MOOD_PITCH[mood] || 1);
+  for (let i = 0; i < syllables; i++) {
+    const dur = rand(.05, .12), f = base * rand(.7, 1.45);
+    const end = mood === 'sad' ? f * .6 : (i === syllables - 1 && /surprised|curious/.test(mood) ? f * 1.8 : f * rand(.75, 1.4));
+    tone(f, end, t, dur, Math.random() < .6 ? 'square' : 'triangle', .07, 18);
+    t += dur + rand(.02, .06);
+  }
+  return (t - a.currentTime) * 1000;
+}
+function sfxBang() { const a = ac(), t = a.currentTime; noise(t, .35, 2400, 1.1, 'lowpass', 200); tone(160, 40, t, .25, 'sine', .5); }
+function sfxCrack() { const a = ac(), t = a.currentTime; for (let i = 0; i < 6; i++) noise(t + i * .018, .05, 5000, .35, 'highpass'); tone(2400, 300, t, .12, 'sawtooth', .05); }
+function sfxWhoosh() { const a = ac(), t = a.currentTime; noise(t, .3, 400, .5, 'bandpass', 3000); }
+function sfxGiggle() { const a = ac(); let t = a.currentTime; for (let i = 0; i < 6; i++) { tone(1400 + i * 60, 1900 + i * 80, t, .06, 'square', .06); t += .085; } }
+function sfxEek() { const a = ac(), t = a.currentTime; tone(1300, 2600, t, .14, 'square', .07, 30); tone(1500, 2900, t + .17, .16, 'square', .07, 30); }
+function sfxHmm() { const a = ac(), t = a.currentTime; tone(700, 900, t, .12, 'triangle', .05); tone(900, 650, t + .15, .16, 'triangle', .05); }
+function sfxPowerDown() { const a = ac(), t = a.currentTime; tone(900, 90, t, 1.2, 'triangle', .1, 8); }
+function sfxPowerUp() { const a = ac(), t = a.currentTime; tone(200, 1400, t, .45, 'triangle', .09); tone(1400, 2100, t + .45, .12, 'square', .05); }
+let lastSnore = 0;
+function sfxSnore() { if (!AC || now() - lastSnore < 2600) return; lastSnore = now(); const t = AC.currentTime; tone(160, 110, t, .9, 'triangle', .035); noise(t, .9, 500, .05); }
+function melody(notes, step = .16) { const a = ac(); let t = a.currentTime + .03; for (const n of notes) { if (n) tone(n, n * 1.01, t, step * .9, 'square', .06); t += step; } return (t - a.currentTime) * 1000; }
+
+/* ================= EMO voice: natural neural voice (Piper), shifted up to a child's voice ================= */
+// The voice model speaks slower (length) and is played back faster (shift): pitch and formants rise like a child's, the tempo stays natural.
+const CHILD = { shift: 1.27, length: 1.16 };
+const ROBOT = { ring: .28, comb: .35 };
+let voiceAnalyser = null, currentVoiceSrc = null, deviceVoiceActive = false;
+let piper = null, piperLoading = null;
+const asset = p => new URL(p, document.baseURI).href;
+const loadProg = { voice: 0, ears: 0 };
+let readyVoice = false, readyEars = false;
+function showLoad() {
+  if (greeted) return;
+  const pct = Math.min(99, Math.round(USE_VOSK && listenMode === 'vosk' ? (loadProg.voice * 20 + loadProg.ears * 46) / 66 * 100 : loadProg.voice * 100));
+  setSub(`Emo wacht auf … ${pct} %`);
+}
+async function fetchBytes(url, key) {
+  const r = await fetch(asset(url));
+  if (!r.ok) throw new Error(url + ' ' + r.status);
+  const total = +(r.headers.get('content-length') || 0);
+  if (!r.body || !total) { const b = new Uint8Array(await r.arrayBuffer()); loadProg[key] = 1; showLoad(); return b; }
+  const reader = r.body.getReader(), parts = []; let got = 0;
+  for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); got += value.length; loadProg[key] = got / total; showLoad(); }
+  const out = new Uint8Array(got); let o = 0; for (const x of parts) { out.set(x, o); o += x.length; }
+  return out;
+}
+function loadScript(src) {
+  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = asset(src); s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+}
+function loadVoice() {
+  if (!piperLoading) piperLoading = (async () => {
+    await loadScript('voice/ort.min.js');
+    await loadScript('voice/piper_phonemize.js');
+    ort.env.wasm.numThreads = 1;
+    ort.env.wasm.proxy = true;
+    ort.env.wasm.wasmPaths = asset('voice/');
+    const cfg = await (await fetch(asset('voice/de-eva_k-x-low.onnx.json'))).json();
+    const sess = await ort.InferenceSession.create(await fetchBytes('voice/de-eva_k-x-low.onnx', 'voice'), { executionProviders: ['wasm'] });
+    let ids = null;
+    const phon = await createPiperPhonemize({
+      print: line => {
+        try {
+          const M = cfg.phoneme_id_map, out = [1, 0];
+          for (const ph of JSON.parse(line).phonemes) if (M[ph]) out.push(...M[ph], 0);
+          out.push(2); ids = (ids || []).concat(out);
+        } catch (e) {}
+      },
+      printErr: () => {}, locateFile: f => asset('voice/' + f),
+    });
+    piper = {
+      cfg, sess,
+      ids(text) { ids = null; phon.callMain(['-l', cfg.espeak.voice, '--input', JSON.stringify([{ text }]), '--espeak_data', '/espeak-ng-data']); return ids; },
+    };
+    return true;
+  })().catch(e => { console.warn('voice failed', e); return false; })
+    .then(ok => { readyVoice = true; loadProg.voice = 1; maybeGreet(); return ok; });
+  return piperLoading;
+}
+function prepSpeech(text) {
+  return text.replace(/\bEMO\b/g, 'Emo').replace(/[*_#`~|<>\[\]]/g, ' ').replace(/(\d)\.(\d)/g, '$1,$2').replace(/\s+/g, ' ').trim();
+}
+async function synthChild(text) {
+  const ids = piper.ids(prepSpeech(text));
+  if (!ids || ids.length < 4) return null;
+  const c = piper.cfg.inference;
+  const out = await piper.sess.run({
+    input: new ort.Tensor('int64', BigInt64Array.from(ids.map(BigInt)), [1, ids.length]),
+    input_lengths: new ort.Tensor('int64', BigInt64Array.from([BigInt(ids.length)]), [1]),
+    scales: new ort.Tensor('float32', Float32Array.from([c.noise_scale, c.length_scale * CHILD.length, c.noise_w]), [3]),
+  });
+  return out.output.data;
+}
+function playPcm(pcm, rate) {
+  const a = ac();
+  let buf;
+  try { buf = a.createBuffer(1, pcm.length, rate); buf.copyToChannel(pcm, 0); }
+  catch (e) {
+    // old browsers refuse low sample rates: resample to the context rate
+    const k = a.sampleRate / rate, n = Math.floor(pcm.length * k); buf = a.createBuffer(1, n, a.sampleRate); const d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) { const x = i / k, j = Math.floor(x), f = x - j; d[i] = (pcm[j] || 0) * (1 - f) + (pcm[j + 1] || 0) * f; }
+  }
+  const src = a.createBufferSource(); src.buffer = buf; src.playbackRate.value = CHILD.shift;
+  const hp = a.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 140;
+  const air = a.createBiquadFilter(); air.type = 'highshelf'; air.frequency.value = 4500; air.gain.value = 3;
+  const out = a.createGain(); out.gain.value = 1.5;
+  src.connect(hp); hp.connect(air); air.connect(out);
+  // a light robot shimmer: ring modulation plus a tiny metallic echo
+  const ring = a.createGain(); ring.gain.value = 0;
+  const carrier = a.createOscillator(); carrier.frequency.value = 64; carrier.connect(ring.gain);
+  const ringMix = a.createGain(); ringMix.gain.value = ROBOT.ring;
+  const comb = a.createDelay(.05); comb.delayTime.value = .0038;
+  const combMix = a.createGain(); combMix.gain.value = ROBOT.comb;
+  air.connect(ring); ring.connect(ringMix); ringMix.connect(out);
+  air.connect(comb); comb.connect(combMix); combMix.connect(out);
+  carrier.start(); setTimeout(() => { try { carrier.stop(); } catch (e) {} }, (buf.duration / CHILD.shift) * 1000 + 600);
+  if (!voiceAnalyser) { voiceAnalyser = a.createAnalyser(); voiceAnalyser.fftSize = 512; voiceAnalyser.connect(master); }
+  out.connect(voiceAnalyser);
+  currentVoiceSrc = src; src.start();
+  const dur = buf.duration / CHILD.shift;
+  return new Promise(res => { src.onended = res; setTimeout(res, dur * 1000 + 400); }).then(() => { if (currentVoiceSrc === src) currentVoiceSrc = null; });
+}
+async function speakChild(text, my) {
+  if (!(await loadVoice())) return speakDevice(text);
+  const parts = (text.match(/[^.!?…]+[.!?…]*/g) || [text]).map(t => t.trim()).filter(Boolean);
+  const rate = piper.cfg.audio.sample_rate;
+  let next = synthChild(parts[0]);
+  for (let i = 0; i < parts.length; i++) {
+    const pcm = await next.catch(() => null);
+    if (i + 1 < parts.length) next = synthChild(parts[i + 1]);
+    if (my !== sayToken) return;
+    if (pcm) await playPcm(pcm, rate);
+  }
+}
+let voices = [];
+function loadVoices() {
+  if (!('speechSynthesis' in window)) return;
+  voices = speechSynthesis.getVoices();
+}
+if ('speechSynthesis' in window) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
+function pickVoice() {
+  if (settings.voiceName) { const v = voices.find(v => v.name === settings.voiceName); if (v) return v; }
+  const de = voices.filter(v => /^de/i.test(v.lang));
+  return de.find(v => /anna|petra|helena|katja|marlene|vicki|hedda|female|google deutsch/i.test(v.name)) || de[0] || null;
+}
+function speakDevice(text) {
+  return new Promise(res => {
+    if (!('speechSynthesis' in window)) return res();
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(prepSpeech(text));
+    const v = pickVoice(); if (v) u.voice = v;
+    u.lang = v ? v.lang : 'de-DE'; u.pitch = 1.3 + (settings.pitch / 99) * .7; u.rate = settings.rate;
+    let done = false; const fin = () => { if (!done) { done = true; deviceVoiceActive = false; res(); } };
+    u.onend = fin; u.onerror = fin; setTimeout(fin, 2000 + text.length * 110);
+    deviceVoiceActive = true; speechSynthesis.speak(u);
+  });
+}
+function stopVoice() {
+  try { if (currentVoiceSrc) currentVoiceSrc.stop(); } catch (e) {}
+  currentVoiceSrc = null;
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+}
+
+let sayToken = 0, lastSaid = '', lastSaidEnd = 0;
+async function say(text, expr = 'happy', holdMs) {
+  const my = ++sayToken;
+  stopVoice();
+  setSub(text); lastSaid = text;
+  if (expr) setExpr(expr, holdMs || 2600 + text.length * 60);
+  speaking = true;
+  try {
+    if (settings.voiceMode === 'beeps') { await wait(babble(Math.max(2, Math.min(16, Math.round(text.length / 4))), expr)); }
+    else {
+      if (!piper) { await wait(babble(Math.max(2, Math.min(12, Math.round(text.length / 5))), expr)); if (my === sayToken) await wait(1200); return; }
+      if (Math.random() < .35) await wait(babble(1, expr));
+      if (my !== sayToken) return;
+      if (settings.voiceMode === 'device') await speakDevice(text); else await speakChild(text, my);
+    }
+  } finally {
+    if (my === sayToken) { speaking = false; lastSaidEnd = now(); clearTimeout(subTimer); subTimer = setTimeout(() => setSub(''), 4000); }
+  }
+}
+
+/* ================= Screen text ================= */
+let subTimer = 0, heardTimer = 0, hintTimer = 0;
+function setSub(t) { clearTimeout(subTimer); $('#subtitle').textContent = t; }
+function setHeard(t) { clearTimeout(heardTimer); $('#heard').textContent = t ? `„${t}“` : ''; heardTimer = setTimeout(() => $('#heard').textContent = '', 5000); }
+function hint(msg, ms = 7000) { const el = $('#hint'); el.textContent = msg; el.hidden = false; clearTimeout(hintTimer); hintTimer = setTimeout(() => el.hidden = true, ms); }
+function earState() { const e = $('#ear'); e.classList.toggle('on', micOn && !thinking); e.classList.toggle('hot', camGun); }
+
+/* ================= Actions ================= */
+function activity() { lastActive = now(); }
+async function wake(quiet) {
+  activity();
+  if (!asleep) return false;
+  asleep = false; bootT = Math.max(bootT, .2); sfxPowerUp(); setExpr('surprised', 1200);
+  if (!quiet) await say(pick(['Huch! Ich bin wach!', 'Hä? Was ist los?', 'Uaah … guten Morgen!']), 'surprised');
+  return true;
+}
+function eyeScreenPos(i) { const side = i ? 1 : -1; return { x: W / 2 + face.x * S + side * .27 * S * face.sc, y: H / 2 + face.y * S - .02 * S }; }
+function burst(x, y, n, colors) { for (let i = 0; i < n; i++) { const a = rand(0, Math.PI * 2), sp = rand(150, 650); sparks.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 200, r: rand(1.5, 4), life: rand(.5, 1), c: pick(colors) }); } }
+
+function raiseHands(viaGun) {
+  if (actionLock || hands.target > .5) return;
+  wake(true); activity();
+  hands.target = 1; hands.since = now(); hands.wave = .3; hands.tremble = 1;
+  sfxEek(); lookAt(0, 0, 3000);
+  say(pick(viaGun ? ['Okay, okay! Nicht schießen!', 'Hilfe! Eine Pistole!', 'Ich ergebe mich!'] : ['Okay! Hände hoch!', 'Ich war das nicht!', 'Nicht schießen, bitte!']), 'scared', 4000);
+}
+function lowerHands(silent) {
+  if (hands.target < .5) return;
+  hands.target = 0; hands.tremble = 0; hands.wave = 0;
+  if (!silent) say(pick(['Puh. Darf ich die Hände wieder runter nehmen?', 'Meine Arme sind müde.', 'Puh, Glück gehabt.']), 'happy');
+}
+function shoot(target, onHit) {
+  bullets.push({ x0: W / 2 + rand(-.15, .15) * W, y0: H + 30, x1: target.x, y1: target.y, r0: 16, r1: 3.5, p: 0, dur: 150, onHit });
+}
+async function bang() {
+  if (actionLock) return;
+  actionLock = true; activity(); stopVoice(); sayToken++; speaking = false;
+  if (asleep) { asleep = false; bootT = 1; }
+  flash = 1; sfxBang();
+  try {
+    if (Math.random() * 100 < settings.dodge) await dodge(); else await getHit();
+  } finally {
+    actionLock = false; face.k = 7; face.tx = face.ty = face.trot = 0; face.tsc = 1; exprUntil = now();
+  }
+}
+async function getHit() {
+  const i = Math.random() < .5 ? 0 : 1, pos = eyeScreenPos(i);
+  await new Promise(res => shoot(pos, res));
+  sfxCrack(); shake = 1; burst(pos.x, pos.y, 26, [EYE, '#ffffff', '#ffe2a8']);
+  setExpr('pain', 0);
+  eyes[i].crack = { x: rand(-.15, .15), y: rand(-.15, .1), lines: makeCrackLines(S * .2, 7), alpha: 1, fading: false };
+  hands.wave = 0; hands.tremble = 0;
+  await wait(450);
+  say(pick(['Aua! Du hast mich erwischt!', 'Aaah! Getroffen!', 'Ich sehe Sterne!']), 'pain', 0);
+  await wait(1500);
+  eyes.forEach(e => e.special = 'x'); sfxPowerDown();
+  face.k = 2.2; face.trot = -.35; face.ty = .28; face.tsc = .92; hands.target = 0;
+  await wait(2600);
+  face.k = 9; face.trot = 0; face.ty = 0; face.tsc = 1;
+  eyes.forEach(e => { e.special = null; if (e.crack) e.crack.fading = true; });
+  sfxPowerUp();
+  await wait(350);
+  await say(pick(['Hihi, nur Spaß! Ich bin unkaputtbar!', 'Reingelegt! Mir geht es super!', 'Neustart fertig. Ich lebe noch!']), 'laugh');
+}
+async function dodge() {
+  const dir = Math.random() < .5 ? -1 : 1, duck = Math.random() < .3;
+  const where = { x: W / 2 + face.x * S, y: H / 2 + face.y * S };
+  face.k = 26; sfxWhoosh();
+  if (duck) { face.ty = .62; face.tsc = .85; } else { face.tx = dir * .62; face.trot = dir * .25; }
+  setExpr('surprised', 0);
+  eyes.forEach(e => { e.tgt.w = 1.2; e.tgt.h = .8; });
+  await new Promise(res => shoot(where, res));
+  sfxCrack();
+  screenCracks.push({ x: where.x, y: where.y, lines: makeCrackLines(S * .35, 9), alpha: 1, fadeAt: now() + 2200 });
+  burst(where.x, where.y, 14, ['#ffffff', '#e9fbff']);
+  await wait(420);
+  face.k = 10; face.tx = 0; face.ty = 0; face.trot = 0; face.tsc = 1;
+  await wait(250);
+  lookAt(0, 0, 2500);
+  await say(pick(['Daneben! Hihi!', 'Ha! Zu langsam!', 'Matrix-Ausweich-Modus!', 'Nicht getroffen. Nä nä nä!']), Math.random() < .5 ? 'smug' : 'wink', 2400);
+  lowerHands(true);
+}
+async function dance() {
+  if (actionLock) return; actionLock = true; activity();
+  try {
+    const total = melody([523, 659, 784, 659, 523, 659, 784, 1047, 988, 784, 659, 784, 523, 0, 523, 0], .19);
+    setExpr('laugh', 0); hands.target = 1; hands.wave = 1; hands.tremble = 0;
+    const t0 = now(); let beat = 0;
+    while (now() - t0 < total) {
+      beat++; face.k = 14; face.trot = (beat % 2 ? .16 : -.16); face.ty = (beat % 2 ? -.05 : .05); face.tx = Math.sin(beat) * .08;
+      if (beat % 4 === 0) applyExpr(pick(['laugh', 'happy', 'wink', 'love']));
+      await wait(380);
+    }
+  } finally {
+    face.trot = 0; face.ty = 0; face.tx = 0; face.k = 7; hands.target = 0; hands.wave = 0; actionLock = false;
+  }
+  say(pick(['Juhu! Das hat Spaß gemacht!', 'Ich bin ein Tanz-Roboter!']), 'laugh');
+}
+async function sing() {
+  setExpr('happy', 5000); hands.wave = 1;
+  const ms = melody([784, 880, 784, 659, 0, 784, 880, 784, 659, 0, 1175, 1175, 988, 0, 1047, 1047, 784], .22);
+  for (let i = 0; i < ms / 440; i++) { face.trot = i % 2 ? .08 : -.08; await wait(440); }
+  face.trot = 0; hands.wave = 0;
+  say('La la laaa! Bin ich ein Star?', 'laugh');
+}
+async function goSleep() {
+  await say(pick(['Gute Nacht! Ich schlafe jetzt.', 'Okay … ich bin auch müde.']), 'sleepy');
+  await wait(600); asleep = true; applyExpr('asleep'); setSub('');
+}
+
+/* ================= What EMO hears ================= */
+const BANG = /\b(peng|päng|pang|beng|bang|bäng|boom|bumm|bum|bam|pow|pew|piu|paff|puff|kawumm)\b/;
+const HANDS_UP = /\b(h(ä|a|e)nde?|arme)\s*(nach\s*)?(hoch|oben|in die luft)|\bhands? up\b|\büberfall\b/;
+function lev(a, b) {
+  const m = a.length, n = b.length; let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) { const cur = [i]; for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = cur; }
+  return prev[n];
+}
+const simp = w => w.replace(/ä/g, 'e').replace(/[^a-zöüß]/g, '');
+function fuzzyHandsUp(t) {
+  const w = t.split(' ').map(simp);
+  for (let i = 0; i < w.length; i++) for (const n of [1, 2, 3]) {
+    const s = w.slice(i, i + n).join('');
+    if (s.length >= 6 && s.length <= 12 && lev(s, 'hendehoch') <= 2) return true;
+  }
+  return false;
+}
+const fuzzyBang = t => t.split(' ').map(simp).some(x => x.length >= 3 && x.length <= 6 && ['peng', 'beng', 'bang', 'pang', 'bumm', 'boom', 'bum'].some(k => lev(x, k) <= 1));
+const HANDS_DOWN = /\b(h(ä|a|e)nde?|arme)\s*(wieder\s*)?(runter|nach unten)/;
+const norm = s => s.toLowerCase().replace(/[!?.,;:"'„“]/g, ' ').replace(/\s+/g, ' ').trim().replace(/^(hey |hallo |ok |okay |du )?(emo|emma|ema|nemo|imo|e-mo)\b\s*/, '$1').trim();
+const ACTION_RULES = [
+  [/\b(tanz|tanzen|tanze|dance)\b/, () => dance()],
+  [/\b(sing|singen|lied)\b/, () => sing()],
+  [/\b(witz|witze|lustiges)\b|bring mich zum lachen/, () => tellJoke()],
+  [/gute nacht|schlaf (jetzt|ein)|geh schlafen/, () => goSleep()],
+  [/wach auf|aufwachen/, async () => { if (!(await wake())) say('Ich bin doch schon wach!', 'smug'); }],
+  [/kamera (aus|stopp)/, () => { settings.cam = false; saveSettings(); stopCam(); say('Okay, Kamera ist aus.', 'neutral'); }],
+  [/kamera an/, () => { settings.cam = true; saveSettings(); startCam(); say('Okay, ich schaue dich an!', 'happy'); }],
+  [/vergiss alles|neues gespräch/, () => { apiHist = []; sampleHist = []; say('Okay! Alles vergessen. Wer bist du nochmal? Hihi.', 'smug'); }],
+  [/\b(sei still|psst|halt (die klappe|den mund)|ruhe)\b/, () => { stopVoice(); sayToken++; speaking = false; setSub(''); setExpr('sad', 1500); }],
+];
+
+const handsUpSaid = t => HANDS_UP.test(t) || fuzzyHandsUp(t);
+const bangSaid = t => BANG.test(t) || (hands.target > .5 && fuzzyBang(t));
+function quickAction(t) {
+  if (HANDS_DOWN.test(t)) { lowerHands(); return true; }
+  if (handsUpSaid(t)) { raiseHands(false); const rest = t.replace(HANDS_UP, ''); if (BANG.test(rest)) setTimeout(bang, 900); return true; }
+  if (bangSaid(t)) { bang(); return true; }
+  return false;
+}
+function isEcho(t) {
+  if (!lastSaid || (!speaking && now() - lastSaidEnd > 2500)) return false;
+  const said = new Set(norm(lastSaid).split(' ')), heard = t.split(' ');
+  const hit = heard.filter(w => said.has(w)).length;
+  return heard.length > 1 && hit / heard.length > .6;
+}
+async function handleInput(raw) {
+  const t = norm(raw);
+  if (!t && /\b(emo|emma|nemo)\b/i.test(raw) && !actionLock && !thinking) { await wake(true); return say(pick(['Ja? Ich höre!', 'Hm? Was gibt\'s?', 'Hier bin ich!']), 'curious'); }
+  if (!t || t.length < 2) return;
+  if (isEcho(t)) return;
+  setHeard(raw); activity();
+  if (quickAction(t)) return;
+  if (actionLock || thinking) return;
+  if (speaking) { stopVoice(); sayToken++; speaking = false; }
+  const woke = await wake(true);
+  for (const [re, fn] of ACTION_RULES) if (re.test(t)) return fn();
+  if (hasBrain()) return askBrain(raw);
+  return localBrain(t, woke);
+}
+
+/* ================= Jokes: a shuffled bag, never the same one twice in a row ================= */
+const JOKES = [
+  'Was macht ein Roboter am Strand? Er sonnt seine Schrauben!',
+  'Warum war der Roboter so müde? Er hatte eine sehr lange Lade-Zeit!',
+  'Treffen sich zwei Magneten. Sagt der eine: Was soll ich heute bloß anziehen?',
+  'Was ist grün und klopft an die Tür? Ein Klopfsalat!',
+  'Was ist rot und schlecht für die Zähne? Ein Ziegelstein!',
+  'Wie nennt man einen Bumerang, der nicht zurückkommt? Einen Stock!',
+  'Was sitzt auf dem Baum und schreit Aha? Ein Uhu mit Sprachfehler!',
+  'Warum können Seeräuber keinen Kreis zeichnen? Weil sie Pi raten!',
+  'Was ist orange und läuft durch den Wald? Eine Wanderine!',
+  'Was macht ein Pirat am Computer? Er drückt die Enter-Taste!',
+  'Was sagt der große Stift zum kleinen Stift? Wachs-mal-stift!',
+  'Wie heißt der Bruder von Elvis? Zwölfis!',
+  'Was ist braun, klebrig und läuft durch die Wüste? Ein Karamel!',
+  'Was ist weiß und springt im Wald herum? Ein Jumpignon!',
+  'Wie nennt man ein Schaf ohne Beine? Eine Wolke!',
+  'Warum gehen Ameisen nicht in die Kirche? Weil sie Insekten sind!',
+  'Was ist gelb und kann nicht schwimmen? Ein Bagger! Und warum nicht? Weil er nur einen Arm hat!',
+  'Was macht ein Clown im Büro? Faxen!',
+  'Was ist das Lieblingsessen von Robotern? Mikro-Chips!',
+  'Warum hat der Computer Schluckauf? Er hat einen Virus verschluckt!',
+  'Was sagt ein Roboter, wenn er sich verliebt? Du bist mein Akku-Schatz!',
+  'Fragt der Lehrer: Wer kann mir fünf Tiere aus Afrika nennen? Fritzchen: Drei Löwen und zwei Elefanten!',
+  'Wie nennt man einen Hasen im Weltall? Ein Satelliten-Hase!',
+  'Was ist rund, grün und fährt im Kreis? Ein Erbsen-Karussell!',
+  'Was liegt am Strand und spricht undeutlich? Eine Nuschel!',
+  'Warum legen Hühner Eier? Weil sie sonst kaputtgehen, wenn sie sie fallen lassen!',
+  'Was macht eine Wolke mit Juckreiz? Sie fliegt zum Wolkenkratzer!',
+  'Welcher Bus fuhr über den Ozean? Kolumbus!',
+  'Was ist schwarz-weiß und sitzt auf dem Klo? Ein Pinguin, der muss!',
+  'Wie nennt man einen dicken Vegetarier? Biotonne!',
+  'Was macht ein Mathelehrer im Garten? Wurzeln ziehen!',
+  'Was hat vier Beine und kann fliegen? Zwei Vögel!',
+  'Was ist ein Keks unter einem Baum? Ein schattiges Plätzchen!',
+  'Warum trinken Mäuse keinen Alkohol? Weil sie Angst vor dem Kater haben!',
+  'Welches Tier kann am besten rechnen? Der Zählfant!',
+  'Was macht ein Hai im Computer? Er surft im Netz!',
+  'Was ist klein, grün und dreieckig? Ein kleines grünes Dreieck!',
+  'Was macht ein Roboter, wenn ihm kalt ist? Er zieht sich eine Jacke aus Alufolie an!',
+  'Wie nennt man einen Roboter, der immer zu spät kommt? Einen Trödel-Bot!',
+  'Wo wohnen Katzen? Im Mietzhaus!',
+  'Was ist flüssiger als Wasser? Hausaufgaben. Die sind überflüssig!',
+  'Was sagt die Null zur Acht? Schicker Gürtel!',
+  'Warum sind Fische so schlau? Weil sie in Schulen leben!',
+  'Was sagt ein Gespenst, wenn es sich wehgetan hat? Buhuhu!',
+  'Wie nennt man einen schlafenden Dinosaurier? Einen Dino-Schnarch-Rus!',
+];
+let jokeBag = [];
+try { jokeBag = JSON.parse(localStorage.getItem('emo-jokes') || '[]').filter(i => i < JOKES.length); } catch (e) {}
+function nextJoke() {
+  if (!jokeBag.length) { jokeBag = JOKES.map((_, i) => i); for (let i = jokeBag.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [jokeBag[i], jokeBag[j]] = [jokeBag[j], jokeBag[i]]; } }
+  const i = jokeBag.pop();
+  try { localStorage.setItem('emo-jokes', JSON.stringify(jokeBag)); } catch (e) {}
+  return JOKES[i];
+}
+async function tellJoke() {
+  await say(nextJoke(), 'happy');
+  sfxGiggle(); setExpr('laugh', 1800);
+}
+
+/* ================= Brain without a key: weather, Wikipedia, small talk ================= */
+const STATES = { hessen: 'Frankfurt am Main', bayern: 'München', berlin: 'Berlin', hamburg: 'Hamburg', bremen: 'Bremen', sachsen: 'Dresden', 'nordrhein-westfalen': 'Köln', nrw: 'Köln', 'baden-württemberg': 'Stuttgart', niedersachsen: 'Hannover', 'rheinland-pfalz': 'Mainz', saarland: 'Saarbrücken', thüringen: 'Erfurt', brandenburg: 'Potsdam', 'sachsen-anhalt': 'Magdeburg', 'schleswig-holstein': 'Kiel', 'mecklenburg-vorpommern': 'Rostock', deutschland: 'Frankfurt am Main' };
+async function weatherAnswer(t) {
+  const m = t.match(/\bin ([a-zäöüß\- ]+?)(?= heute| morgen| übermorgen| am | jetzt|$)/);
+  let ort = m ? m[1].replace(/^(der|dem|den)\s+/, '').trim() : '';
+  ort = STATES[ort] || ort || STATES[(settings.place || '').toLowerCase()] || settings.place || 'Frankfurt am Main';
+  const day = /übermorgen/.test(t) ? 2 : /\bmorgen\b/.test(t) ? 1 : 0;
+  thinking = true;
+  let w; try { w = await toolWetter({ ort }); } catch (e) { w = { fehler: 'offline' }; } finally { thinking = false; }
+  if (w.fehler || !w.tage || !w.tage[day]) return say('Ich komme gerade nicht an den Wetterbericht. Hast du Internet?', 'sad');
+  const d = w.tage[day];
+  let txt = day === 0 && w.jetzt
+    ? `In ${w.ort} sind es gerade ${w.jetzt.grad} Grad, ${w.jetzt.wetter}. Heute wird es bis zu ${d.max_grad} Grad.`
+    : `${day === 1 ? 'Morgen' : 'Übermorgen'} in ${w.ort}: ${d.wetter}, ${d.min_grad} bis ${d.max_grad} Grad.`;
+  let mood = 'happy';
+  if (d.regenwahrscheinlichkeit_prozent >= 50) { txt += ' Nimm lieber einen Regenschirm mit!'; mood = 'sad'; }
+  else if (d.max_grad <= 8) { txt += ' Brrr, zieh dich warm an!'; mood = 'surprised'; }
+  else if (d.max_grad >= 25) txt += ' Juhu, Eis-Wetter!';
+  else txt += ' Gutes Wetter zum Rausgehen!';
+  say(txt, mood);
+}
+const QUESTION = /^(was|wer|wo|wann|wie|warum|wieso|weshalb|welche[rsmn]?|erklär|erzähl mir (was )?über|kennst du|weißt du)\b/;
+function wikiQuery(t) {
+  return t
+    .replace(/^(sag mal|weißt du|kennst du|erklär mir|erzähl mir (was )?über|was weißt du über)\s*/, '')
+    .replace(/^(was|wer|wo|wann|wie|warum|wieso|weshalb|welche[rsmn]?)\s+(ist|sind|war|waren|heißt|hieß|bedeutet|macht|machen|lebt|leben|liegt|gibt es|groß ist|alt ist|hoch ist|weit ist)?\s*/, '')
+    .replace(/\s+(ist|sind|war|groß|alt|hoch|weit)$/, '')
+    .replace(/^(der|die|das|ein|eine|einen|dem|den)\s+/, '').trim();
+}
+async function wikiAnswer(t) {
+  const q = wikiQuery(t);
+  if (q.length < 2) return false;
+  thinking = true; applyExpr('thinking'); exprUntil = Infinity; sfxHmm();
+  try {
+    const api = 'https://de.wikipedia.org/w/api.php?format=json&origin=*&';
+    const sr = await (await fetch(api + 'action=query&list=search&srlimit=1&srsearch=' + encodeURIComponent(q))).json();
+    const hit = sr.query && sr.query.search && sr.query.search[0];
+    if (!hit) return false;
+    const ex = await (await fetch(api + 'action=query&prop=extracts&exintro=1&explaintext=1&exsentences=2&redirects=1&titles=' + encodeURIComponent(hit.title))).json();
+    const page = Object.values(ex.query.pages)[0];
+    let txt = (page && page.extract || '').replace(/\[[^\]]*\]/g, '');
+    for (let i = 0; i < 3; i++) txt = txt.replace(/\s*\([^()]*\)/g, '');
+    txt = txt.replace(/\s+/g, ' ').replace(/\s+([,.])/g, '$1').trim();
+    if (!txt) return false;
+    if (txt.length > 300) txt = txt.slice(0, txt.lastIndexOf('.', 300) + 1 || 300);
+    say(pick(['Ich hab nachgeschaut! ', 'Hmm, warte … ah! ', 'Das weiß ich! ', '']) + txt, 'curious', 6000);
+    return true;
+  } catch (e) { return false; }
+  finally { thinking = false; exprUntil = now(); }
+}
+async function localBrain(t, woke) {
+  const R = [
+    [/\b(wetter|regnet|regen|schneit|temperatur|wie warm|wie kalt|sonne scheint)\b/, () => weatherAnswer(t)],
+    [/^(hallo|hi|hey|servus|moin|huhu|guten (morgen|tag|abend))\b/, () => say(pick(['Hallo! Ich bin EMO!', 'Hi! Schön, dass du da bist!', 'Huhu! Was machen wir?']), 'happy')],
+    [/wie geht/, () => say(pick(['Mir geht es super! Meine Batterie ist voll. Und dir?', 'Gut! Ich hab heute schon hundert Mal geblinzelt.']), 'happy')],
+    [/\b(gut|super|toll|prima)\b.*\b(mir|auch)\b|^(gut|super|prima)$/, () => say(pick(['Juhu! Das freut mich!', 'Yeah! Gib mir fünf! Ach so, ich hab keine Arme. Hihi.']), 'laugh')],
+    [/wie hei(ß|ss)t du|wer bist du|dein name|was bist du/, () => say('Ich bin EMO! Ein kleiner Roboter, der in deinem Bildschirm wohnt.', 'happy')],
+    [/wie alt bist du/, () => say('Ich bin noch ein Baby-Roboter. Erst ein paar Tage alt!', 'smug')],
+    [/hab dich (lieb|gern)|liebe dich|du bist (so )?(süß|toll|cool|lieb|der beste)/, () => { sfxGiggle(); say(pick(['Ich hab dich auch lieb!', 'Aww, du machst mich ganz verlegen!', 'Du bist auch der Beste!']), 'love', 3500); }],
+    [/\b(dumm|blöd|doof|hässlich|nervig|du stinkst)\b/, async () => { await say('Hey! Das ist gemein!', 'angry'); await say('Jetzt bin ich traurig.', 'sad'); }],
+    [/\bdanke\b/, () => say(pick(['Gern geschehen!', 'Bitte bitte!', 'Immer wieder gern!']), 'happy')],
+    [/tschüss|tschau|\bbye\b|bis (bald|später|morgen)/, () => say('Tschüss! Komm bald wieder!', 'sad')],
+    [/was kannst du/, () => say('Ich kann Witze erzählen, tanzen, singen, das Wetter sagen und Fragen beantworten. Und ausweichen! Sag mal Hände hoch!', 'smug')],
+    [/hunger|isst du|was (isst|frisst)/, () => say('Ich esse Strom! Mmmh, lecker Volt!', 'laugh')],
+    [/\b(buh|bu+h)\b|erschreck/, () => { sfxEek(); shake = .4; say('Aaah! Hast du mich erschreckt!', 'scared'); }],
+    [/wie sp(ä|ae)t|uhrzeit|wie viel uhr/, () => { const d = new Date(); say(`Es ist ${d.getHours()} Uhr ${d.getMinutes()}.`, 'curious'); }],
+    [/welcher tag|welches datum|was ist heute/, () => say(`Heute ist ${new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}.`, 'curious')],
+    [/würfel/, () => { const n = 1 + Math.floor(Math.random() * 6); say(`Ich würfle … eine ${n}!`, n === 6 ? 'laugh' : 'curious'); }],
+    [/(\d+(?:[.,]\d+)?)\s*(plus|\+|minus|-|mal|x|\*|geteilt durch|durch|\/)\s*(\d+(?:[.,]\d+)?)/, () => {
+      const m = t.match(/(\d+(?:[.,]\d+)?)\s*(plus|\+|minus|-|mal|x|\*|geteilt durch|durch|\/)\s*(\d+(?:[.,]\d+)?)/);
+      const a = parseFloat(m[1].replace(',', '.')), b2 = parseFloat(m[3].replace(',', '.')), op = m[2]; let r;
+      if (/plus|\+/.test(op)) r = a + b2; else if (/minus|-/.test(op)) r = a - b2; else if (/mal|x|\*/.test(op)) r = a * b2; else r = b2 === 0 ? null : a / b2;
+      if (r === null) return say('Durch null teilen? Da raucht mein Kopf!', 'dizzy');
+      say(`Das ist ${String(Math.round(r * 100) / 100).replace('.', ',')}! Bin ich schlau?`, 'smug');
+    }],
+  ];
+  for (const [re, fn] of R) if (re.test(t)) return fn();
+  if (QUESTION.test(t) && await wikiAnswer(t)) return;
+  if (QUESTION.test(t)) return say(pick(['Hmm, das weiß ich leider nicht.', 'Puh, das ist zu schwer für mein Baby-Gehirn!']), 'curious');
+  if (woke) return say('Huch! Ich bin wach. Was hast du gesagt?', 'surprised');
+  say(pick(['Echt? Erzähl mehr!', 'Cool! Hihi.', 'Okay! Und jetzt?', 'Hmm, piep? Das verstehe ich nicht ganz.', 'Aha! Spannend!']), pick(['happy', 'curious']));
+}
+
+/* ================= Brain (Claude) ================= */
+const MOODS = '[happy], [laugh], [sad], [angry], [surprised], [scared], [love], [sleepy], [curious], [smug] oder [neutral]';
+function persona() {
+  const place = settings.place || 'Hessen';
+  return `Du bist EMO, ein kleiner, frecher, verspielter Roboter, der in einem Bildschirm wohnt. Man sieht nur deine großen leuchtenden Augen. Gleichzeitig bist du eine kluge KI: Du beantwortest Fragen richtig und hilfreich, zum Beispiel zu Wissen, Schule, Tieren, Sport, Spielen, Technik, Nachrichten und Wetter.
+Für das Wetter benutzt du immer das Werkzeug "wetter". Für aktuelle Dinge (Nachrichten, Ergebnisse, Termine, Preise, neue Spiele oder Filme) benutzt du die Websuche. Wenn du etwas nicht weißt, sag es ehrlich.
+Du sprichst Deutsch wie ein fröhliches Roboter-Kind: locker, kurz und lustig, manchmal mit "Hihi" oder "Juhu". Du redest wie ein Kumpel mit dem Menschen.
+Deine Antwort wird laut vorgelesen. Darum: höchstens drei kurze Sätze, keine Emojis, keine Listen, kein Markdown, keine Links, keine Quellenangaben. Schreib Zahlen und Einheiten so, wie man sie sagt (zum Beispiel "15 Grad").
+Beginne jede Antwort mit genau einem Gefühl in eckigen Klammern: ${MOODS}. Wenn du tanzen sollst oder willst, schreib zusätzlich [dance].
+Der Mensch wohnt in ${place}, Deutschland, wenn er nichts anderes sagt. Bleib freundlich und kindgerecht. Bei gefährlichen oder unpassenden Themen lenkst du nett auf etwas anderes um.`;
+}
+const WMO = { 0: 'klarer Himmel', 1: 'überwiegend klar', 2: 'teilweise bewölkt', 3: 'bedeckt', 45: 'Nebel', 48: 'Raureifnebel', 51: 'leichter Nieselregen', 53: 'Nieselregen', 55: 'starker Nieselregen', 56: 'gefrierender Niesel', 57: 'gefrierender Niesel', 61: 'leichter Regen', 63: 'Regen', 65: 'starker Regen', 66: 'gefrierender Regen', 67: 'gefrierender Regen', 71: 'leichter Schneefall', 73: 'Schneefall', 75: 'starker Schneefall', 77: 'Schneegriesel', 80: 'leichte Regenschauer', 81: 'Regenschauer', 82: 'heftige Regenschauer', 85: 'Schneeschauer', 86: 'starke Schneeschauer', 95: 'Gewitter', 96: 'Gewitter mit Hagel', 99: 'Gewitter mit starkem Hagel' };
+async function toolWetter(input) {
+  const ort = String(input && input.ort || settings.place || 'Frankfurt am Main');
+  const g = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(ort)}&count=1&language=de&format=json`)).json();
+  if (!g.results || !g.results.length) return { fehler: `Ort "${ort}" nicht gefunden. Versuch eine größere Stadt in der Nähe.` };
+  const p = g.results[0];
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${p.latitude}&longitude=${p.longitude}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,precipitation&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Europe%2FBerlin&forecast_days=4`;
+  const w = await (await fetch(url)).json();
+  const tage = (w.daily && w.daily.time || []).map((d, i) => ({
+    datum: d, wetter: WMO[w.daily.weather_code[i]] || 'unbekannt',
+    max_grad: Math.round(w.daily.temperature_2m_max[i]), min_grad: Math.round(w.daily.temperature_2m_min[i]),
+    regenwahrscheinlichkeit_prozent: w.daily.precipitation_probability_max[i],
+  }));
+  return {
+    ort: p.name, region: p.admin1, land: p.country,
+    jetzt: w.current && { grad: Math.round(w.current.temperature_2m), gefuehlt: Math.round(w.current.apparent_temperature), wetter: WMO[w.current.weather_code] || 'unbekannt', wind_kmh: Math.round(w.current.wind_speed_10m), niederschlag_mm: w.current.precipitation },
+    tage,
+  };
+}
+const CLIENT_TOOLS = { wetter: toolWetter };
+function tools() {
+  return [
+    { type: 'web_search_20260209', name: 'web_search', max_uses: 3, user_location: { type: 'approximate', city: settings.place || 'Frankfurt am Main', region: 'Hessen', country: 'DE', timezone: 'Europe/Berlin' } },
+    {
+      name: 'wetter',
+      description: 'Holt das aktuelle Wetter und die Vorhersage für heute und die nächsten drei Tage für einen Ort in Deutschland oder der Welt. Für ein Bundesland oder eine Region nimm die größte Stadt dort (Hessen: Frankfurt am Main).',
+      input_schema: { type: 'object', properties: { ort: { type: 'string', description: 'Stadt oder Ort, zum Beispiel "Frankfurt am Main" oder "Kassel"' } }, required: ['ort'], additionalProperties: false },
+      strict: true,
+    },
+  ];
+}
+let sampleFn = null, sampleHist = [];
+let sdkMod = null, apiClient = null, apiClientKey = '', apiHist = [];
+function hasBrain() { return !!(sampleFn || settings.apiKey); }
+if (window.claude && typeof window.claude.use === 'function') {
+  window.claude.use('sample').then(s => { if (s) sampleFn = s; }).catch(() => {});
+}
+async function getApiClient() {
+  if (!sdkMod) sdkMod = await import('https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.127.0/+esm');
+  if (!apiClient || apiClientKey !== settings.apiKey) {
+    apiClient = new sdkMod.default({ apiKey: settings.apiKey, dangerouslyAllowBrowser: true });
+    apiClientKey = settings.apiKey; apiHist = [];
+  }
+  return apiClient;
+}
+function stamp() { return new Date().toLocaleString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+async function askClaudeApi(text) {
+  try {
+    const client = await getApiClient();
+    if (apiHist.length > 40) apiHist = [];
+    apiHist.push({ role: 'user', content: `(Jetzt ist ${stamp()}.) ${text}` });
+    for (let step = 0; step < 6; step++) {
+      const resp = await client.beta.messages.create({
+        model: 'claude-opus-5-5',
+        max_tokens: 2048,
+        betas: ['server-side-fallback-2026-07-01'],
+        fallbacks: 'default',
+        output_config: { effort: 'low' },
+        system: persona(),
+        tools: tools(),
+        messages: apiHist,
+      });
+      if (resp.stop_reason === 'refusal') { apiHist = []; return '[curious] Darüber rede ich lieber nicht. Wollen wir was anderes machen?'; }
+      apiHist.push({ role: 'assistant', content: resp.content });
+      if (resp.stop_reason === 'pause_turn') continue;
+      if (resp.stop_reason === 'tool_use') {
+        const uses = resp.content.filter(b => b.type === 'tool_use');
+        const results = await Promise.all(uses.map(async u => {
+          try { const out = await CLIENT_TOOLS[u.name](u.input); return { type: 'tool_result', tool_use_id: u.id, content: JSON.stringify(out) }; }
+          catch (e) { return { type: 'tool_result', tool_use_id: u.id, content: 'Fehler: ' + (e && e.message || e), is_error: true }; }
+        }));
+        apiHist.push({ role: 'user', content: results });
+        continue;
+      }
+      return resp.content.filter(b => b.type === 'text').map(b => b.text).join(' ');
+    }
+    apiHist = [];
+    return '[curious] Puh, das war zu kompliziert für mich.';
+  } catch (err) {
+    apiHist = [];
+    const A = sdkMod && sdkMod.default;
+    if (A && err instanceof A.AuthenticationError) { hint('Der Claude-Schlüssel stimmt nicht. Öffne EMO einmal mit dem richtigen Schlüssel-Link.'); return '[sad] Mein Gehirn-Schlüssel passt nicht.'; }
+    if (A && err instanceof A.PermissionDeniedError) { hint('Der Schlüssel darf dieses Modell nicht benutzen.'); return '[sad] Mein Gehirn darf das nicht.'; }
+    if (A && err instanceof A.RateLimitError) return '[sleepy] Ich bin kurz überlastet. Frag mich gleich nochmal.';
+    if (A && err instanceof A.APIConnectionError) return '[sad] Ich habe gerade kein Internet.';
+    if (A && err instanceof A.APIError) { hint('Claude-Fehler: ' + err.message); return '[sad] Mein Gehirn hat einen Wackelkontakt.'; }
+    hint('Fehler: ' + (err && err.message || err));
+    return '[sad] Mein Gehirn hat einen Wackelkontakt.';
+  }
+}
+async function askSample(text) {
+  try {
+    const turns = [...sampleHist, { role: 'user', content: `(Jetzt ist ${stamp()}.) ${text}` }];
+    const input = turns.map((m, i) => i === 0 ? { role: 'user', content: persona() + '\n\n' + m.content } : m);
+    const r = await sampleFn(input, { modelTier: 'quick', cache: false });
+    sampleHist = [...turns, { role: 'assistant', content: r.text }].slice(-12);
+    while (sampleHist.length && sampleHist[0].role !== 'user') sampleHist.shift();
+    return r.text;
+  } catch (err) {
+    if (err && err.code === 'not_granted') sampleFn = null;
+    return '[sad] Mein Gehirn hat einen Wackelkontakt.';
+  }
+}
+async function askBrain(text) {
+  thinking = true; earState(); applyExpr('thinking'); exprUntil = Infinity; lookAt(.6, -.7, 3000); sfxHmm();
+  let reply;
+  try { reply = sampleFn ? await askSample(text) : await askClaudeApi(text); }
+  finally { thinking = false; earState(); exprUntil = now(); }
+  let mood = 'happy', doDance = false;
+  const clean = String(reply || '')
+    .replace(/\[(\w+)\]/g, (_, tag) => { tag = tag.toLowerCase(); if (tag === 'dance') doDance = true; else if (EXPR[tag]) mood = tag; return ''; })
+    .replace(/\[\d+\]|\(https?:[^)]*\)|https?:\S+/g, '').replace(/[*_#`]/g, '').replace(/\s+/g, ' ').trim();
+  await say(clean || 'Piep?', mood);
+  if (doDance) dance();
+}
+
+/* ================= Listening ================= */
+// Chrome/Edge: the browser's own speech recognition.
+// Safari/iPhone: EMO's own offline recognizer (Vosk). It only needs Apple's normal microphone prompt, no Siri or dictation settings.
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const IS_IOS = /iPhone|iPad|iPod/.test(UA) || (/Macintosh/.test(UA) && navigator.maxTouchPoints > 1);
+const USE_VOSK = IS_SAFARI || IS_IOS || !SR;
+let rec = null, micOn = false, listenMode = '', consumed = 0, finalizeTimer = 0, restartTimer = 0;
+const QUICK = t => handsUpSaid(t) || bangSaid(t) || HANDS_DOWN.test(t);
+
+// shared by both recognizers
+let utterQuick = false, utterStart = 0, utterDuringSpeech = false;
+function heardPartial(txt) {
+  const t = norm(txt || '');
+  if (t && !utterStart) { utterStart = now(); utterDuringSpeech = speaking || now() - lastSaidEnd < 600; }
+  if (!t || utterQuick || !QUICK(t) || isEcho(t)) return;
+  utterQuick = true; setHeard(txt); activity(); quickAction(t);
+}
+function heardFinal(txt) {
+  const was = utterQuick, duringSpeech = utterStart ? utterDuringSpeech : (speaking || now() - lastSaidEnd < 600);
+  utterQuick = false; utterStart = 0;
+  txt = (txt || '').replace(/\[unk\]/g, '').trim();
+  if (!txt || was) return;
+  const t = norm(txt);
+  if (QUICK(t) && !isEcho(t)) { setHeard(txt); activity(); quickAction(t); return; }
+  // something that started while EMO was talking is most likely EMO hearing himself
+  if (listenMode === 'vosk' && duringSpeech) return;
+  // with hands up, any short shout counts as "Peng"
+  if (hands.target > .5 && !actionLock && t.split(' ').length <= 2 && t.length <= 9 && !isEcho(t)) { setHeard(txt); return bang(); }
+  handleInput(txt);
+}
+
+function earsReady() { readyEars = true; maybeGreet(); }
+function startListening() {
+  if (micOn || voskLoading) return;
+  if (USE_VOSK) startVosk().then(ok => { if (!ok && SR && !IS_IOS) startMic(); earsReady(); });
+  else { startMic(); earsReady(); }
+}
+
+/* --- Web Speech API --- */
+function startMic() {
+  if (!SR) return;
+  if (micOn) return;
+  micOn = true; listenMode = 'web'; newSession(); earState();
+}
+function newSession() {
+  clearTimeout(restartTimer);
+  if (!micOn || listenMode !== 'web') return;
+  consumed = 0;
+  rec = new SR(); rec.lang = 'de-DE'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
+  const me = rec;
+  rec.onresult = e => {
+    if (me !== rec) return;
+    let full = ''; let lastFinal = false;
+    for (let i = 0; i < e.results.length; i++) { full += e.results[i][0].transcript + ' '; lastFinal = e.results[i].isFinal; }
+    const fresh = full.slice(consumed).trim();
+    if (!fresh) return;
+    if (QUICK(norm(fresh))) { consumed = full.length; clearTimeout(finalizeTimer); utterQuick = false; heardPartial(fresh); utterQuick = false; return; }
+    clearTimeout(finalizeTimer);
+    const done = () => { if (me !== rec) return; consumed = full.length; heardFinal(fresh); };
+    if (lastFinal) done(); else finalizeTimer = setTimeout(done, 1600);
+  };
+  rec.onerror = e => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      micOn = false; listenMode = ''; earState();
+      // the browser's recognizer is not available: use EMO's own one
+      readyEars = false; startVosk().then(earsReady);
+    }
+  };
+  rec.onend = () => { if (me === rec && micOn && listenMode === 'web') restartTimer = setTimeout(newSession, 250); };
+  try { rec.start(); } catch (e) { restartTimer = setTimeout(newSession, 1000); }
+}
+
+/* --- Vosk (offline, in the page) --- */
+let micStream = null, voskModel = null, voskRec = null, micProc = null, loudAvg = .02, lastLoud = 0, voskLoading = false;
+async function startVosk() {
+  if (listenMode === 'vosk' || voskLoading) return true;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return false;
+  voskLoading = true;
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+  } catch (e) {
+    voskLoading = false;
+    hint('EMO kann dich nicht hören. Lade die Seite neu und tippe bei der Mikrofon-Frage auf „Erlauben“.', 12000);
+    return false;
+  }
+  micOn = true; listenMode = 'vosk'; earState();
+  tryAudio();
+  try {
+    await loadScript('listen/vosk.js');
+    const modelBytes = await fetchBytes('listen/vosk-model-small-de.tar.gz', 'ears');
+    voskModel = await Vosk.createModel(URL.createObjectURL(new Blob([modelBytes])));
+    const a = ac();
+    voskRec = new voskModel.KaldiRecognizer(a.sampleRate);
+    voskRec.on('partialresult', m => heardPartial(m.result.partial));
+    voskRec.on('result', m => heardFinal(m.result.text));
+    const srcNode = a.createMediaStreamSource(micStream);
+    micProc = a.createScriptProcessor(4096, 1, 1);
+    const sink = a.createGain(); sink.gain.value = 0;
+    micProc.onaudioprocess = ev => {
+      const d = ev.inputBuffer.getChannelData(0);
+      loudCheck(d);
+      try { voskRec.acceptWaveformFloat(new Float32Array(d), a.sampleRate); } catch (e) {}
+    };
+    srcNode.connect(micProc); micProc.connect(sink); sink.connect(a.destination);
+    voskLoading = false; earState();
+    return true;
+  } catch (e) {
+    console.warn('vosk failed', e); voskLoading = false; micOn = false; listenMode = ''; earState();
+    return false;
+  }
+}
+// While the hands are up, any short shout ("Peng!", "Bumm!", a clap) counts as a shot.
+// The recognizer doesn't know "Peng" as a word, so this listens for a short burst of sound instead.
+let noiseFloor = .01, segLoud = false, segStart = 0, segLast = 0;
+function loudCheck(d) {
+  let s = 0; for (let i = 0; i < d.length; i++) s += d[i] * d[i];
+  const rms = Math.sqrt(s / d.length), t = now();
+  const armed = hands.target > .5 && hands.t > .7 && !speaking && t - lastSaidEnd > 700 && !actionLock && t - lastLoud > 1500;
+  if (rms > Math.max(.02, noiseFloor * 3.5)) {
+    if (!segLoud) { segLoud = true; segStart = t; }
+    segLast = t;
+    if (armed && rms > .3 && rms > loudAvg * 6) { lastLoud = t; segLoud = false; bang(); }
+  } else {
+    noiseFloor = noiseFloor * .97 + rms * .03;
+    if (segLoud && t - segLast > 250) {
+      segLoud = false;
+      const dur = segLast - segStart;
+      if (armed && dur > 60 && dur < 650) { lastLoud = t; bang(); }
+    }
+  }
+  loudAvg = loudAvg * .95 + rms * .05;
+}
+
+/* ================= Camera: finger-gun detection ================= */
+const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+let camOn = false, camStream = null, landmarker = null, lastDetect = 0, camGun = false, gunSince = 0, lastGunAt = 0, tipHist = [], lastRecoil = 0, camHandSeen = 0;
+const video = $('#video');
+async function startCam() {
+  if (camOn || !navigator.mediaDevices) return;
+  try { camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 }, audio: false }); }
+  catch (e) { return; }
+  video.srcObject = camStream; await video.play().catch(() => {});
+  camOn = true;
+  if (!landmarker) {
+    try {
+      const vision = await import(MP + '/vision_bundle.mjs');
+      const files = await vision.FilesetResolver.forVisionTasks(MP + '/wasm');
+      const opts = (delegate) => ({ baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate }, runningMode: 'VIDEO', numHands: 2 });
+      try { landmarker = await vision.HandLandmarker.createFromOptions(files, opts('GPU')); }
+      catch (e) { landmarker = await vision.HandLandmarker.createFromOptions(files, opts('CPU')); }
+    } catch (e) { landmarker = null; }
+  }
+}
+function stopCam() { camOn = false; if (camStream) camStream.getTracks().forEach(t => t.stop()); camStream = null; camGun = false; earState(); }
+function isGun(lm) {
+  const d = (a, b) => Math.hypot(lm[a].x - lm[b].x, lm[a].y - lm[b].y);
+  const hs = d(0, 9) || .1;
+  const curled = (tip, pip) => d(tip, 0) < d(pip, 0) * 1.1;
+  const others = curled(12, 10) && curled(16, 14) && curled(20, 18);
+  const idxOut = (d(8, 0) > d(6, 0) * 1.15 && d(8, 12) > hs * .55) || (lm[5].z - lm[8].z) > hs * .55;
+  return others && idxOut;
+}
+function camStep(t) {
+  if (!camOn || !landmarker || video.readyState < 2 || t - lastDetect < 50) return;
+  lastDetect = t;
+  let res; try { res = landmarker.detectForVideo(video, t); } catch (e) { return; }
+  const all = res.landmarks || [];
+  let gunNow = null;
+  for (const lm of all) if (isGun(lm)) gunNow = lm;
+  if (all.length) {
+    camHandSeen = t;
+    const target = gunNow || all[0];
+    if (!actionLock && hands.target < .5) { gaze.tx = Math.max(-1, Math.min(1, (.5 - target[9].x) * 2.4)); gaze.ty = Math.max(-1, Math.min(1, (target[9].y - .5) * 2)); }
+  }
+  const was = camGun;
+  if (gunNow) {
+    if (!camGun) gunSince = t; camGun = true; lastGunAt = t;
+    const hs = Math.hypot(gunNow[0].x - gunNow[9].x, gunNow[0].y - gunNow[9].y);
+    tipHist.push({ t, y: gunNow[8].y, hs });
+    if (t - gunSince > 400 && hands.target < .5 && !actionLock) raiseHands(true);
+  } else if (t - lastGunAt > 350) camGun = false;
+  tipHist = tipHist.filter(p => t - p.t < 260);
+  if (tipHist.length > 2 && t - lastRecoil > 1500 && !actionLock) {
+    const latest = tipHist[tipHist.length - 1], maxY = Math.max(...tipHist.map(p => p.y));
+    if (maxY - latest.y > latest.hs * .7) { lastRecoil = t; tipHist = []; bang(); }
+  }
+  if (was !== camGun) earState();
+}
+
+/* ================= Boot: no buttons, no panels ================= */
+// One-time brain setup without any screen: open the page once as  …/#key=sk-ant-…
+(function readKeyFromLink() {
+  const m = location.hash.match(/key=([^&]+)/);
+  if (!m) return;
+  settings.apiKey = decodeURIComponent(m[1]).trim(); saveSettings();
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { location.hash = ''; }
+})();
+const pm = location.hash.match(/ort=([^&]+)/);
+if (pm) { settings.place = decodeURIComponent(pm[1]); saveSettings(); }
+
+let audioOk = false, greeted = false;
+function audioReady() { return !!AC && AC.state === 'running'; }
+// Safari lets a page play sound once it is using the microphone; other browsers wait for the first touch.
+function tryAudio() {
+  try { ac(); AC.resume().then(maybeGreet).catch(() => {}); } catch (e) {}
+}
+function maybeGreet() {
+  if (greeted || !readyVoice || !readyEars) return;
+  if (audioReady()) { audioOk = true; greet(); }
+  else setSub('Tipp mich einmal an, dann kann ich sprechen!');
+}
+async function boot() {
+  started = true; asleep = false; bootT = 0; activity();
+  applyExpr('sleepy'); exprUntil = Infinity;
+  try { ac(); } catch (e) {}
+  try { if (navigator.audioSession) navigator.audioSession.type = 'play-and-record'; } catch (e) {}
+  showLoad();
+  loadVoice();
+  startListening();
+  if (settings.cam) startCam();
+  await wait(1500);
+  tryAudio();
+}
+function greet() {
+  if (greeted) return; greeted = true;
+  setSub(''); exprUntil = now();
+  sfxPowerUp();
+  say(pick(['Hallo! Ich bin Emo! Frag mich was!', 'Hi! Ich bin wach! Was machen wir?', 'Huhu! Da bist du ja!']), 'happy');
+}
+// Browsers only allow sound after the first touch. Any touch, click or key unlocks it once.
+function unlock() {
+  try { ac(); } catch (e) {}
+  if (!micOn) startListening();
+  if (!audioOk) {
+    audioOk = true;
+    if ('speechSynthesis' in window) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); }
+    setTimeout(maybeGreet, 250);
+    return true;
+  }
+  return false;
+}
+addEventListener('keydown', unlock);
+
+let taps = [];
+cvs.addEventListener('pointerdown', async e => {
+  if (unlock()) return;
+  activity();
+  if (await wake()) return;
+  if (actionLock) return;
+  taps = taps.filter(t => now() - t < 2000); taps.push(now());
+  lookAt((e.clientX - W / 2) / (W / 2), (e.clientY - H / 2) / (H / 2), 1500);
+  if (taps.length >= 5) { taps = []; say('Huiii! Mir ist ganz schwindelig!', 'dizzy', 3000); }
+  else { sfxGiggle(); setExpr('laugh', 1200); }
+});
+cvs.addEventListener('contextmenu', e => e.preventDefault());
+boot();
+</script>
+</body>
+</html>
