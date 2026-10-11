@@ -722,7 +722,8 @@ async function say(text, expr = 'happy', holdMs, keepLast) {
   try {
     if (settings.voiceMode === 'beeps') { await wait(babble(Math.max(2, Math.min(16, Math.round(text.length / 4))), expr)); }
     else {
-      if (!piper) { await wait(babble(Math.max(2, Math.min(12, Math.round(text.length / 5))), expr)); if (my === sayToken) await wait(1200); return; }
+      if (!piper && !readyVoice) { await wait(babble(Math.max(2, Math.min(12, Math.round(text.length / 5))), expr)); if (my === sayToken) await wait(1200); return; }
+      if (!piper) { await speakDevice(text); return; }
       if (my !== sayToken) return;
       if (settings.voiceMode === 'device') await speakDevice(text); else await speakChild(text, my);
     }
@@ -732,11 +733,21 @@ async function say(text, expr = 'happy', holdMs, keepLast) {
 }
 
 // When you start talking while EMO talks, he goes quiet and listens.
+// EMO hearing his own voice repeats his sentence word for word, in the same order.
+// A question you ask may share single words with it ("Gepard", "schnell"), but not the same word pairs.
 function echoScore(t) {
   const said = norm(lastSaid).split(' ').map(simp).filter(Boolean), heard = t.split(' ').map(simp).filter(Boolean);
-  if (!heard.length) return 1;
-  const hit = heard.filter(h => said.some(w => w === h || (h.length > 3 && w.length > 3 && (lev(h, w) <= 1 || h.slice(0, 4) === w.slice(0, 4))))).length;
-  return hit / heard.length;
+  if (!heard.length || !said.length) return 0;
+  const same = (a, b) => a === b || (a.length > 3 && b.length > 3 && lev(a, b) <= 1);
+  if (heard.length === 1) return said.some(w => same(w, heard[0])) ? 1 : 0;
+  let hit = 0;
+  for (let i = 0; i + 1 < heard.length; i++) for (let j = 0; j + 1 < said.length; j++) if (same(heard[i], said[j]) && same(heard[i + 1], said[j + 1])) { hit++; break; }
+  return hit / (heard.length - 1);
+}
+function dropEcho(t) {
+  const w = t.split(' ');
+  for (let k = 0; k < w.length - 1; k++) { const rest = w.slice(k).join(' '); if (echoScore(rest) < .34) return rest; }
+  return '';
 }
 function canBarge(t) {
   const w = t.split(' ').filter(x => x.length > 1);
@@ -983,7 +994,13 @@ function fuzzyHandsUp(t) {
 const BANG_NOT = new Set(['bank', 'band', 'bunt', 'bund', 'ball', 'bahn', 'baum', 'bein', 'bett', 'berg', 'bums', 'pony']);
 const fuzzyBang = t => t.split(' ').map(simp).some(x => x.length >= 4 && x.length <= 6 && /^[pb]/.test(x) && !BANG_NOT.has(x) && ['peng', 'beng', 'bang', 'pang', 'bumm', 'boom'].some(k => lev(x, k) <= 1));
 const HANDS_DOWN = /\b(h(ä|a|e)nde?|arme)\s*(wieder\s*)?(runter|nach unten)/;
-const norm = s => s.toLowerCase().replace(/[!?.,;:"'„“]/g, ' ').replace(/\s+/g, ' ').trim().replace(/^(hey |hallo |ok |okay |du )?(emo|emma|ema|nemo|imo|e-mo)\b\s*/, '$1').trim();
+const norm = s => {
+  let t = s.toLowerCase().replace(/[!?.,;:"'„“]/g, ' ').replace(/\s+/g, ' ').trim();
+  // "hey Emo, sei leise" -> "sei leise"; a plain "hallo Emo" stays a greeting
+  const m = t.match(/^(hey |hallo |hi |ok |okay |du |na )?(emo|emma|ema|nemo|imo|e-mo)\b\s*(.*)$/);
+  if (m) t = m[3] || (m[1] && /hallo|hey|hi/.test(m[1]) ? 'hallo' : '');
+  return t.trim();
+};
 function subsSaid(t) { return /unter ?titel|untertitle/.test(t) || t.split(' ').some(w => w.length >= 8 && lev(simp(w), 'untertitel') <= 2); }
 function setSubs(on) {
   settings.subs = on; saveSettings();
@@ -995,10 +1012,84 @@ function setVolume(v, msg) {
   if (master) master.gain.value = 1.8 * settings.volume;
   say(msg, 'happy');
 }
+// ----- following orders -----
+const NOT_NAME = new Set('wie was wer wo du ich mich mir dich dir emo na alles zusammen leute ja nein mal doch bitte und noch gut wieder auch schön der die das ein eine mein meine dein deine wir ihr hier da guten morgen tag abend nacht'.split(' '));
+const cap = w => w.split(/([ -])/).map(x => x ? x[0].toUpperCase() + x.slice(1) : x).join('');
+const capFirst = t => t ? t[0].toUpperCase() + t.slice(1) : t;
+function namesIn(words) {
+  // "peter", "peter und anna", "frau müller" -> "Peter", "Peter und Anna", "Frau Müller"
+  const out = []; for (const w of words) { if (w === 'und') { out.push('und'); continue; } if (NOT_NAME.has(w) || w.length < 2) break; out.push(cap(w)); }
+  while (out.length && out[out.length - 1] === 'und') out.pop();
+  return out.length && out.length <= 5 ? out.join(' ') : '';
+}
+function greetPerson(name) {
+  sfxGiggle();
+  const many = / und /.test(name);
+  return say(pick([`Hallo ${name}! Ich bin Emo. Schön, ${many ? 'euch' : 'dich'} kennenzulernen!`, `Hi ${name}! Ich bin Emo, der kleine Roboter.`, `Huhu ${name}! Schön, dass ${many ? 'ihr da seid' : 'du da bist'}!`]), 'happy');
+}
+function countTo(n, back) {
+  n = Math.max(1, Math.min(20, n));
+  const NW = ['null', 'eins', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht', 'neun', 'zehn', 'elf', 'zwölf', 'dreizehn', 'vierzehn', 'fünfzehn', 'sechzehn', 'siebzehn', 'achtzehn', 'neunzehn', 'zwanzig'];
+  const seq = []; for (let i = 1; i <= n; i++) seq.push(NW[i]);
+  if (back) seq.reverse();
+  return say(cap(seq.join(', ')) + (back ? '! Start!' : '! Fertig!'), 'happy');
+}
+async function faceMove(kind) {
+  if (actionLock) return; actionLock = true;
+  try {
+    face.k = 14;
+    if (kind === 'spin') { for (let k = 1; k <= 12; k++) { face.trot = k / 12 * Math.PI * 2; await wait(45); } face.k = 40; face.trot = 0; face.rot = 0; }
+    if (kind === 'jump') { face.k = 18; face.ty = -.35; await wait(220); face.ty = .05; await wait(220); face.ty = 0; }
+    if (kind === 'nod') { for (let k = 0; k < 3; k++) { face.ty = .08; await wait(170); face.ty = -.03; await wait(170); } face.ty = 0; }
+    if (kind === 'shake') { for (let k = 0; k < 3; k++) { face.tx = .08; await wait(160); face.tx = -.08; await wait(160); } face.tx = 0; }
+    if (kind === 'wave') { hands.target = 1; hands.wave = 1.6; hands.tremble = 0; setExpr('happy', 2200); await wait(1800); hands.target = 0; hands.wave = 0; }
+  } finally { face.k = 7; actionLock = false; }
+}
+const FEELINGS = [[/traurig/, 'sad'], [/fröhlich|glücklich|happy|freu/, 'happy'], [/wütend|böse|sauer/, 'angry'], [/überrascht|erstaunt/, 'surprised'], [/verliebt|herz/, 'love'], [/müde/, 'sleepy'], [/ängstlich|angst|erschrocken/, 'scared'], [/schlau|frech|cool/, 'smug'], [/schwindelig/, 'dizzy']];
+function feeling(t) { for (const [re, e] of FEELINGS) if (re.test(t)) return e; return null; }
+const COMMANDS = [
+  // "Grüß mal Peter", "Begrüß Anna", "Sag hallo zu Peter", "Sag Peter hallo"
+  [/^(grüß|grüße|grüss|grüsse|begrüß|begrüße|begrüss|begrüsse)( mal| bitte| doch)* (.+)$/, m => { const n = namesIn(m[3].replace(/^(den|die|der|meinen|meine|unseren|unsere)\s+/, '').split(' ')); return n ? greetPerson(n) : null; }],
+  [/^(sag|sage)( mal| bitte| doch)* (hallo|hi|tschüss|guten tag) (zu|an) (.+)$/, m => { const n = namesIn(m[5].split(' ')); return n ? (m[3] === 'tschüss' ? say(`Tschüss ${n}! Bis bald!`, 'happy') : greetPerson(n)) : null; }],
+  [/^(sag|sage)( mal| bitte| doch)* ([a-zäöüß-]+( und [a-zäöüß-]+)?) (hallo|hi|guten tag)$/, m => { const n = namesIn(m[3].split(' ')); return n ? greetPerson(n) : null; }],
+  // "Hallo Sübeide" -> says the name back
+  [/^(hallo|hi|hey|huhu|servus|moin|guten (morgen|tag|abend)) (.+)$/, m => { if (/^(wie|was|na|alles)\b/.test(m[3])) return null; const n = namesIn(m[3].split(' ')); return n ? say(pick([`Hallo ${n}!`, `Hallo ${n}! Schön, dich zu sehen!`, `Hi ${n}! Ich bin Emo.`]), 'happy') : null; }],
+  // remember your name
+  [/^(ich heiße|ich heisse|mein name ist|nenn mich|ich bin der|ich bin die) (.+)$/, m => { const n = namesIn(m[2].split(' ')); if (!n) return null; settings.userName = n; saveSettings(); sfxGiggle(); return say(`Hallo ${n}! Freut mich! Das merke ich mir.`, 'happy'); }],
+  [/^wie (heiße|heisse) ich$|weißt du (noch )?wie ich heiße|kennst du meinen namen/, () => say(settings.userName ? `Du heißt ${settings.userName}!` : 'Das hast du mir noch nicht gesagt. Sag einfach: Ich heiße …', 'curious')],
+  // say exactly what you tell him: "Sag mal hallo", "Sag: Ich bin ein Roboter", "Sprich mir nach: …"
+  [/^(sprich mir nach|sprich nach|wiederhole nach mir|wiederhol mal|wiederhole)( mal)? (.+)$/, m => say(capFirst(m[3]) + '!', 'happy')],
+  [/^(sag|sage)( mal| bitte| doch| jetzt)* (deinen namen|wie du heißt)$/, () => say('Ich heiße Emo!', 'happy')],
+  [/^(sag|sage)( mal| bitte| doch| jetzt)* (?!(?:mal|bitte|doch|jetzt|mir|uns|was|wer|wie|wo|wann|warum|wieso|welche|ob|bescheid|das nochmal|das noch mal|es nochmal)\b)(.+)$/, m => say(capFirst(m[3]) + '!', 'happy')],
+  // little tricks
+  [/zwinker|zwinkern/, () => { sfxGiggle(); setExpr('wink', 1500); }],
+  [/(mach|schließ|schliess)( mal| bitte)* (die |deine )?augen zu|augen zu/, () => { setExpr('asleep', 3000); }],
+  [/(mach|öffne)( mal| bitte)* (die |deine )?augen auf|augen auf/, () => { setExpr('surprised', 1500); }],
+  [/^(guck|schau|sei|mach|zeig)( mal| bitte| doch)* (ein )?(traurig|fröhlich|glücklich|happy|wütend|böse|sauer|überrascht|erstaunt|verliebt|müde|ängstlich|erschrocken|schlau|frech|cool|schwindelig)/, (m, t) => { const e = feeling(t); setExpr(e, 2500); if (e === 'love') sfxGiggle(); }],
+  [/(mach|zeig)( mal| bitte)* herzaugen|herzchenaugen/, () => { sfxGiggle(); setExpr('love', 2500); }],
+  [/(schau|guck)( mal| bitte)* nach links/, () => lookAt(1, 0, 2500)],
+  [/(schau|guck)( mal| bitte)* nach rechts/, () => lookAt(-1, 0, 2500)],
+  [/(schau|guck)( mal| bitte)* nach oben/, () => lookAt(0, -1, 2500)],
+  [/(schau|guck)( mal| bitte)* nach unten/, () => lookAt(0, 1, 2500)],
+  [/(schau|guck)( mal| bitte)* (mich an|zu mir|geradeaus)/, () => lookAt(0, 0, 2500)],
+  [/^(lach|lache)( mal| doch| bitte| laut)*$|^lachen$/, () => { sfxGiggle(); return say(pick(['Hahaha! Hihihi!', 'Hihihi! Hahaha!']), 'laugh'); }],
+  [/^(wein|weine|heul|heule)( mal| doch| bitte)*$|^weinen$/, () => { crying = 3; sfxSob(); setExpr('sad', 3200); }],
+  [/\b(wink|winke|winken)\b/, () => faceMove('wave')],
+  [/dreh dich|drehen|im kreis/, () => faceMove('spin')],
+  [/\b(spring|springe|hüpf|hüpfe)\b/, () => faceMove('jump')],
+  [/\b(nick|nicke|nicken)\b/, () => faceMove('nod')],
+  [/(schüttel|schüttle) (den|deinen) kopf|kopf schütteln/, () => faceMove('shake')],
+  [/zähl(e)? (mal )?(rückwärts|runter)/, () => countTo(10, true)],
+  [/zähl(e)? (mal )?bis (\d+|[a-zäöüß]+)/, m => countTo(wordNum(m[3]) || 10)],
+  [/stell dich vor|wer bist du eigentlich|erzähl (was )?über dich/, () => say('Ich bin Emo, ein kleiner Roboter in deinem Bildschirm. Ich kann Fragen beantworten, rechnen, Witze erzählen, tanzen und Kugeln ausweichen. Und ich hab dich gern!', 'happy')],
+  [/\b(piep|piepe|piepsen|mach ein geräusch|roboter ?geräusch)\b/, () => { babble(6, 'happy'); setExpr('happy', 1500); }],
+];
+let lastCommand = null;
 const ACTION_RULES = [
   [/\b(lauter|laut sprechen|rede laut|sprich laut|ich hör dich nicht|ich höre dich nicht|ich hör dich kaum|ich höre dich kaum)\b/, () => setVolume(settings.volume * 1.4, settings.volume >= 3 ? 'Lauter geht nicht mehr! Mach dein Gerät lauter.' : 'Okay! Ich rede jetzt lauter. Ist das besser?')],
   [/\b(leiser|sprich leise|rede leise|zu laut)\b/, () => setVolume(settings.volume / 1.4, 'Okay, ich rede jetzt leiser.')],
   [/was hast du (da |eben |gerade |grad )?(noch ?mal |nochmal )?gesagt|wiederhol|sag (das|es) (bitte )?(noch ?mal|nochmal)|noch ?mal bitte|^wie bitte|nicht verstanden/, () => repeatLast()],
+  [t => { for (const [re, fn] of COMMANDS) { const m = t.match(re); if (m) { const r = fn(m, t); if (r !== null) { lastCommand = r; return true; } } } return false; }, () => lastCommand],
   [t => subsSaid(t) && /\b(aus|weg|ab|stopp|ausschalten|ausmachen|nicht mehr)\b/.test(t), () => setSubs(false)],
   [t => subsSaid(t), () => setSubs(true)],
   [/\b(tanz|tanzen|tanze|dance)\b/, () => dance()],
@@ -1009,12 +1100,17 @@ const ACTION_RULES = [
   [/kamera (aus|stopp)/, () => { settings.cam = false; saveSettings(); stopCam(); say('Okay, Kamera ist aus.', 'neutral'); }],
   [/kamera an/, () => { settings.cam = true; saveSettings(); startCam(); say('Okay, ich schaue dich an!', 'happy'); }],
   [/vergiss alles|neues gespräch/, () => { apiHist = []; sampleHist = []; say('Okay! Alles vergessen. Wer bist du nochmal? Hihi.', 'smug'); }],
-  [/\b(sei still|psst|halt (die klappe|den mund)|ruhe)\b/, () => { stopVoice(); sayToken++; speaking = false; setSub(''); setExpr('sad', 1500); }],
 ];
 
+const QUIET = /\b(sei (mal )?(still|leise|ruhig)|psst+|pst+|halt (die klappe|den mund|die fresse|dein maul|s maul)|halts maul|klappe|ruhe jetzt|hör auf zu reden|hör auf|stopp|stop|schnauze|shh+)\b/;
+function beQuiet() {
+  stopVoice(); sayToken++; speaking = false; lastSaidEnd = now(); clearTimeout(subTimer); setSub('');
+  setExpr('sad', 1200); lookAt(0, .3, 1500);
+}
 const handsUpSaid = t => HANDS_UP.test(t) || fuzzyHandsUp(t);
 const bangSaid = t => BANG.test(t) || (hands.target > .5 && fuzzyBang(t));
 function quickAction(t) {
+  if (QUIET.test(t)) { beQuiet(); return true; }
   if (HANDS_DOWN.test(t)) { lowerHands(); return true; }
   if (handsUpSaid(t)) { raiseHands(false); const rest = t.replace(HANDS_UP, ''); if (BANG.test(rest)) setTimeout(bang, 900); return true; }
   if (bangSaid(t)) { bang(); return true; }
@@ -1022,11 +1118,9 @@ function quickAction(t) {
 }
 function isEcho(t) {
   if (!lastSaid || (!speaking && now() - lastSaidEnd > 2500)) return false;
-  const said = new Set(norm(lastSaid).split(' ')), heard = t.split(' ');
-  const hit = heard.filter(w => said.has(w)).length;
-  return heard.length > 1 && hit / heard.length > .6;
+  return t.split(' ').length > 1 && echoScore(t) >= .5;
 }
-const FILLER = /^((ach|achso|ach so|aso|aha|ah|oh|okay|ok|okey|ja|jaa|jo|jep|nein|nö|hm+|äh+|ähm|mhm|so|also|gut|cool|krass|nice|alles klad|alles klar|na|naja|egal|und|tja|aha okay|ja ja|ach so okay|ok cool)\s*)+$/;
+const FILLER = /^((ach|achso|ach so|aso|aha|ah|oh|okay|ok|okey|ja|jaa|jo|jep|nein|nö|hm+|äh+|ähm|mhm|so|also|cool|krass|nice|alles klad|alles klar|na|naja|egal|und|tja|aha okay|ja ja|ach so okay|ok cool)\s*)+$/;
 async function handleInput(raw) {
   const t = norm(raw);
   if (!t && /\b(emo|emma|nemo)\b/i.test(raw) && !actionLock && !thinking) { await wake(true); return say(pick(['Ja? Ich höre!', 'Hm? Was gibt\'s?', 'Hier bin ich!']), 'curious'); }
@@ -1161,7 +1255,16 @@ async function wikiAnswer(t) {
 // EMOs Wissensbuch (brain/wissen.js): finds the fact that fits the question best.
 const KB_STOP = new Set('was wer wie wo wann warum wieso weshalb welche welcher welches ist sind war waren der die das den dem des ein eine einen einem einer eines von vom zum zur im in an auf aus mit und oder ich mir mich er sie es mal bitte erzähl erzähle erzählen sag sage kennst weißt weisst über gibt hat haben hast kann können kannst denn eigentlich so noch auch emo viel viele wieviel wie viele etwas was nicht man da hier dort sehr ganz bisschen'.split(' '));
 function kbTokens(t) { return t.split(' ').filter(w => w.length > 1 && !KB_STOP.has(w)); }
-function kbHit(tokens, key) { return tokens.some(w => w === key || (key.length >= 4 && w.startsWith(key)) || (w.length >= 5 && key.startsWith(w))); }
+// compare by sound, so misheard spellings still match ("gepaart" = "gepard", "elefannt" = "elefant")
+const phon = w => w.replace(/ä/g, 'e').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/ß/g, 's').replace(/ph/g, 'f').replace(/v/g, 'f').replace(/dt/g, 't').replace(/d\b/g, 't').replace(/([aeiou])h/g, '$1').replace(/(.)\1+/g, '$1');
+function kbHit(tokens, key) {
+  const K = phon(key);
+  return tokens.some(w => {
+    if (w === key) return true;
+    const P = phon(w);
+    return P === K || (K.length >= 4 && P.startsWith(K)) || (P.length >= 5 && K.startsWith(P)) || (K.length >= 5 && P.length >= 5 && lev(P, K) <= 1);
+  });
+}
 function knowledgeAnswer(t) {
   if (!window.WISSEN) return null;
   const tok = kbTokens(t);
@@ -1188,8 +1291,8 @@ function knowledgeAnswer(t) {
 async function localBrain(t, woke) {
   const R = [
     [/\b(wetter|regnet|regen|schneit|temperatur|wie warm|wie kalt|sonne scheint)\b/, () => weatherAnswer(t)],
-    [/^(hallo|hi|hey|servus|moin|huhu|guten (morgen|tag|abend))\b/, () => say(pick(['Hallo! Ich bin EMO!', 'Hi! Schön, dass du da bist!', 'Huhu! Was machen wir?']), 'happy')],
     [/wie geht/, () => say(pick(['Mir geht es super! Meine Batterie ist voll. Und dir?', 'Gut! Ich hab heute schon hundert Mal geblinzelt.']), 'happy')],
+    [/^(hallo|hi|hey|servus|moin|huhu|guten (morgen|tag|abend))\b/, () => say(settings.userName ? pick([`Hallo ${settings.userName}!`, `Hi ${settings.userName}! Schön, dass du da bist!`]) : pick(['Hallo! Ich bin Emo!', 'Hi! Schön, dass du da bist!', 'Huhu! Was machen wir?']), 'happy')],
     [/\b(gut|super|toll|prima)\b.*\b(mir|auch)\b|^(gut|super|prima)$/, () => say(pick(['Juhu! Das freut mich!', 'Yeah! Gib mir fünf! Ach so, ich hab keine Arme. Hihi.']), 'laugh')],
     [/wie hei(ß|ss)t du|wer bist du|dein name|was bist du/, () => say('Ich bin EMO! Ein kleiner Roboter, der in deinem Bildschirm wohnt.', 'happy')],
     [/wie alt bist du/, () => say('Ich bin noch ein Baby-Roboter. Erst ein paar Tage alt!', 'smug')],
@@ -1353,7 +1456,7 @@ const IS_IOS = /iPhone|iPad|iPod/.test(UA) || (/Macintosh/.test(UA) && navigator
 const USE_VOSK = !SR;
 let webWorked = false, speechSeenAt = 0, webEnds = [], webStarted = false, webAskedAt = 0;
 let rec = null, micOn = false, listenMode = '', consumed = 0, finalizeTimer = 0, restartTimer = 0;
-const QUICK = t => handsUpSaid(t) || bangSaid(t) || HANDS_DOWN.test(t);
+const QUICK = t => QUIET.test(t) || handsUpSaid(t) || bangSaid(t) || HANDS_DOWN.test(t);
 
 // shared by both recognizers
 let utterQuick = false, utterStart = 0, utterDuringSpeech = false;
@@ -1361,7 +1464,7 @@ function heardPartial(txt) {
   const t = norm(txt || '');
   if (!t) return;
   if (!utterStart) { utterStart = now(); utterDuringSpeech = speaking || now() - lastSaidEnd < 250; }
-  if (utterDuringSpeech && canBarge(t)) { bargeIn(); utterDuringSpeech = false; }
+  if (utterDuringSpeech && canBarge(t.split(' ').slice(-5).join(' '))) { bargeIn(); utterDuringSpeech = false; }
   if (utterQuick || !QUICK(t) || isEcho(t)) return;
   utterQuick = true; setHeard(txt); activity(); quickAction(t);
 }
@@ -1372,8 +1475,8 @@ function heardFinal(txt) {
   if (!txt || was) return;
   const t = norm(txt);
   if (QUICK(t) && !isEcho(t)) { setHeard(txt); activity(); quickAction(t); return; }
-  // something that started while EMO was talking is most likely EMO hearing himself
-  if (listenMode === 'vosk' && duringSpeech) return;
+  // something that started while EMO was talking: keep only the part that isn't EMO hearing himself
+  if (duringSpeech && echoScore(t) >= .34) { txt = dropEcho(t); if (!txt) return; }
   handleInput(txt);
 }
 
@@ -1411,9 +1514,17 @@ function newSession() {
     webWorked = true; speechSeenAt = 0;
     let full = ''; let lastFinal = false;
     for (let i = 0; i < e.results.length; i++) { full += e.results[i][0].transcript + ' '; lastFinal = e.results[i].isFinal; }
-    const fresh = full.slice(consumed).trim();
+    let fresh = full.slice(consumed).trim();
     if (!fresh) return;
-    if (canBarge(norm(fresh))) bargeIn();
+    if (speaking || now() - lastSaidEnd < 1200) {
+      const words = fresh.split(/\s+/), tail = words.slice(-5).join(' ');
+      if (canBarge(norm(tail)) || (!speaking && echoScore(norm(tail)) < .34)) {
+        // you are talking: EMO goes quiet and keeps only your words
+        if (speaking) bargeIn();
+        const at = full.lastIndexOf(tail); if (at >= consumed && words.length > 5) { consumed = at; fresh = tail; }
+      } else if (QUICK(norm(fresh)) && !isEcho(norm(fresh))) { /* a command, handled below */ }
+      else { consumed = full.length; return; } // that was EMO hearing himself
+    }
     if (QUICK(norm(fresh))) { consumed = full.length; clearTimeout(finalizeTimer); utterQuick = false; heardPartial(fresh); utterQuick = false; return; }
     clearTimeout(finalizeTimer);
     const done = () => { if (me !== rec) return; consumed = full.length; heardFinal(fresh); if (IS_SAFARI || IS_IOS) restartRec(); };
@@ -1463,7 +1574,7 @@ async function startVosk() {
       const conf = words.length ? words.reduce((a, w) => a + (w.conf || 0), 0) / words.length : 1;
       if (conf < .6 && !QUICK(norm(text))) { if (!voskBuf) { utterQuick = false; utterStart = 0; } return; }
       voskBuf = (voskBuf + ' ' + text).trim(); clearTimeout(voskTimer);
-      voskTimer = setTimeout(() => { const all = voskBuf; voskBuf = ''; heardFinal(all); }, 1000);
+      voskTimer = setTimeout(() => { const all = voskBuf; voskBuf = ''; heardFinal(all); }, 700);
     });
     const srcNode = a.createMediaStreamSource(micStream);
     micProc = a.createScriptProcessor(4096, 1, 1);
@@ -1608,7 +1719,7 @@ function unlock() {
   if (!audioOk) {
     audioOk = true;
     if ('speechSynthesis' in window) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); }
-    setTimeout(maybeGreet, 250);
+    try { AC.resume().then(maybeGreet, maybeGreet); } catch (e) { setTimeout(maybeGreet, 250); }
     return true;
   }
   return false;

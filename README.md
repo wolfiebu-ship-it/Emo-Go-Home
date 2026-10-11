@@ -4,9 +4,9 @@ Ein kleiner Roboter auf dem Bildschirm, inspiriert von EMO. Man sieht nur seine 
 
 ## Öffnen
 
-**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v14/**
+**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v15/**
 
-Jede neue Version bekommt einen eigenen Link (`v14`, `v15`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 15`.
+Jede neue Version bekommt einen eigenen Link (`v15`, `v16`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 16`.
 
 Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gibt keine Knöpfe und keine Einstellungen.
 
@@ -19,7 +19,7 @@ Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gib
 
 **Mit Claude-Gehirn** redet er über alles und sucht im Internet. Dafür EMO einmal mit diesem Link öffnen (Schlüssel von https://console.anthropic.com/settings/keys):
 
-`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v14/#key=DEIN-SCHLÜSSEL`
+`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v15/#key=DEIN-SCHLÜSSEL`
 
 Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse entfernt. Mit `#ort=Kassel` kann man den Wohnort für das Wetter ändern (Standard: Frankfurt am Main).
 
@@ -42,7 +42,13 @@ Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse en
 | Gerät schütteln | Kreisel-Augen, wird grün, Zunge hängt raus und wackelt, Schluckauf, ihm wird übel (am iPhone/iPad einmal auf EMO tippen und bei „Bewegung und Ausrichtung“ auf „Erlauben“ tippen) |
 | „Emo, rede lauter“ / „leiser“ | stellt seine Lautstärke ein (merkt er sich) |
 | „Achso“, „Okay“, „Ja“ … | nickt nur, sagt nichts |
-| „Sei still“ | hört auf zu reden |
+| „Sei leise“, „Sei still“, „Halt die Klappe“, „Hör auf“ | ist sofort still, auch mitten im Satz |
+| „Sag mal hallo“, „Sag: Ich bin ein Roboter“, „Sprich mir nach: …“ | sagt genau das |
+| „Grüß mal Peter“, „Sag hallo zu Oma“, „Hallo Sübeide“ | begrüßt die Person mit Namen |
+| „Ich heiße Max“ / „Wie heiße ich?“ | merkt sich deinen Namen und begrüßt dich damit |
+| „Zwinker mal“, „Guck traurig/wütend/verliebt“, „Mach Herzaugen“, „Augen zu“ | macht das Gesicht |
+| „Schau nach links/rechts/oben/unten“, „Dreh dich“, „Spring“, „Nick mal“, „Wink mal“ | bewegt sich |
+| „Zähl bis zehn“, „Zähl rückwärts“, „Lach mal“, „Wein mal“, „Stell dich vor“ | macht das |
 | „Vergiss alles“ | fängt ein neues Gespräch an |
 | „Kamera aus“ / „Kamera an“ | schaltet die Fingerpistolen-Erkennung aus oder an |
 
