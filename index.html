@@ -330,12 +330,17 @@ function onMotion(e) {
   if (lastAcc) { const d = Math.abs(a.x - lastAcc.x) + Math.abs(a.y - lastAcc.y) + Math.abs(a.z - lastAcc.z); shakeEnergy = Math.max(shakeEnergy * .9, d); }
   lastAcc = { x: a.x, y: a.y, z: a.z };
 }
+let motionAsking = false;
 function startMotion() {
-  if (motionOn) return;
+  if (motionOn || motionAsking) return;
   const D = window.DeviceMotionEvent; if (!D) return;
-  // iPhone/iPad ask once ("Bewegung und Ausrichtung"); that question needs a touch, so it comes with the first tap
-  if (typeof D.requestPermission === 'function') D.requestPermission().then(r => { if (r === 'granted' && !motionOn) { motionOn = true; addEventListener('devicemotion', onMotion); } }).catch(() => {});
-  else { motionOn = true; addEventListener('devicemotion', onMotion); }
+  // iPhone/iPad ask once ("Bewegung und Ausrichtung"). Apple only shows that question after a real tap
+  // (finger lifted), so this runs on touchend/click; a refused early attempt simply gets retried on the next tap.
+  if (typeof D.requestPermission === 'function') {
+    motionAsking = true;
+    D.requestPermission().then(r => { if (r === 'granted' && !motionOn) { motionOn = true; addEventListener('devicemotion', onMotion); } })
+      .catch(() => {}).finally(() => { motionAsking = false; });
+  } else { motionOn = true; addEventListener('devicemotion', onMotion); }
 }
 let queasyUntil = 0, nextHic = 0;
 function shakeStep(dt, t) {
@@ -438,7 +443,7 @@ function update(dt, t) {
   shake *= Math.exp(-7 * realDt); flash *= Math.exp(-9 * realDt);
   for (const b of bullets) { b.p += dt * 1000 / b.dur; if (b.p >= 1 && !b.done) { b.done = true; b.onHit && b.onHit(); } }
   bullets = bullets.filter(b => b.p < 1.05);
-  for (const c of screenCracks) if (t > c.fadeAt) c.alpha -= dt * .8;
+  for (const c of screenCracks) if (t > c.fadeAt) c.alpha -= realDt * (c.fast ? 3.5 : .8);
   screenCracks = screenCracks.filter(c => c.alpha > 0);
   for (const s of sparks) { s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 900 * dt; s.life -= dt * 1.6; }
   sparks = sparks.filter(s => s.life > 0);
@@ -663,7 +668,6 @@ async function say(text, expr = 'happy', holdMs, keepLast) {
     if (settings.voiceMode === 'beeps') { await wait(babble(Math.max(2, Math.min(16, Math.round(text.length / 4))), expr)); }
     else {
       if (!piper) { await wait(babble(Math.max(2, Math.min(12, Math.round(text.length / 5))), expr)); if (my === sayToken) await wait(1200); return; }
-      if (Math.random() < .35) await wait(babble(1, expr));
       if (my !== sayToken) return;
       if (settings.voiceMode === 'device') await speakDevice(text); else await speakChild(text, my);
     }
@@ -789,7 +793,7 @@ async function dodge() {
   timeTarget = 1;
   await passed;
   sfxRicochet(); sfxCrack(); shake = .5;
-  screenCracks.push({ x: target.x, y: target.y, lines: makeCrackLines(S * .38, 10), alpha: 1, fadeAt: now() + 2400 });
+  screenCracks.push({ x: target.x, y: target.y, lines: makeCrackLines(S * .38, 10), alpha: 1, fadeAt: now() + 600, fast: true });
   burst(target.x, target.y, 22, ['#ffffff', '#e9fbff']);
   await wait(500);
   face.k = 10; face.tx = 0; face.ty = 0; face.trot = 0; face.tsc = 1;
@@ -1040,7 +1044,7 @@ async function weatherAnswer(t) {
   else txt += ' Gutes Wetter zum Rausgehen!';
   say(txt, mood);
 }
-const QUESTION = /^(was|wer|wo|wann|wie|warum|wieso|weshalb|welche[rsmn]?|erklär|erzähl mir (was )?über|kennst du|weißt du)\b/;
+const QUESTION = /\b(was|wer|wo|wann|wie|warum|wieso|weshalb|welche[rsmn]?|erklär|erzähl|kennst du|weißt du|hauptstadt)\b/;
 function wikiQuery(t) {
   return t
     .replace(/^(sag mal|weißt du|kennst du|erklär mir|erzähl mir (was )?über|was weißt du über)\s*/, '')
@@ -1057,6 +1061,8 @@ async function wikiAnswer(t) {
     const sr = await (await fetch(api + 'action=query&list=search&srlimit=1&srsearch=' + encodeURIComponent(q))).json();
     const hit = sr.query && sr.query.search && sr.query.search[0];
     if (!hit) return false;
+    const title = hit.title.toLowerCase(), qw = q.split(' ').filter(w => w.length > 2);
+    if (!qw.some(w => title.includes(w.slice(0, Math.min(5, w.length))))) return false;
     const ex = await (await fetch(api + 'action=query&prop=extracts&exintro=1&explaintext=1&exsentences=2&redirects=1&titles=' + encodeURIComponent(hit.title))).json();
     const page = Object.values(ex.query.pages)[0];
     let txt = (page && page.extract || '').replace(/\[[^\]]*\]/g, '');
@@ -1116,12 +1122,14 @@ async function localBrain(t, woke) {
     [/würfel/, () => { const n = 1 + Math.floor(Math.random() * 6); say(`Ich würfle … eine ${n}!`, n === 6 ? 'laugh' : 'curious'); }],
   ];
   for (const [re, fn] of R) if (re.test(t)) return fn();
-  const known = knowledgeAnswer(t);
+  const asks = QUESTION.test(t) || t.split(' ').length >= 4;
+  const known = asks ? knowledgeAnswer(t) : null;
   if (known) return say(known, pick(['happy', 'curious', 'smug']), 6000);
-  if (QUESTION.test(t) && await wikiAnswer(t)) return;
-  if (QUESTION.test(t)) return say(pick(['Hmm, das weiß ich leider nicht.', 'Puh, das ist zu schwer für mein Baby-Gehirn!']), 'curious');
+  if (QUESTION.test(t) && t.split(' ').length >= 2 && await wikiAnswer(t)) return;
+  if (QUESTION.test(t) && t.split(' ').length >= 3) return say(pick(['Hmm, das weiß ich leider noch nicht.', 'Das steht noch nicht in meinem Wissensbuch.']), 'curious');
   if (woke) return say('Huch! Ich bin wach. Was hast du gesagt?', 'surprised');
-  say(pick(['Echt? Erzähl mehr!', 'Cool! Hihi.', 'Okay! Und jetzt?', 'Hmm, piep? Das verstehe ich nicht ganz.', 'Aha! Spannend!']), pick(['happy', 'curious']));
+  // not a question and nothing EMO knows: he just listens instead of saying something random
+  setExpr('curious', 1500); lookAt(0, 0, 1500);
 }
 
 /* ================= Brain (Claude) ================= */
@@ -1327,7 +1335,7 @@ function newSession() {
     if (QUICK(norm(fresh))) { consumed = full.length; clearTimeout(finalizeTimer); utterQuick = false; heardPartial(fresh); utterQuick = false; return; }
     clearTimeout(finalizeTimer);
     const done = () => { if (me !== rec) return; consumed = full.length; heardFinal(fresh); if (IS_SAFARI || IS_IOS) restartRec(); };
-    if (lastFinal) done(); else finalizeTimer = setTimeout(done, IS_SAFARI || IS_IOS ? 1200 : 1600);
+    finalizeTimer = setTimeout(done, lastFinal ? 800 : (IS_SAFARI || IS_IOS ? 1800 : 2000));
   };
   rec.onerror = e => {
     // the device's recognizer is not available (no Siri/dictation, no permission, offline): use EMO's own one
@@ -1344,6 +1352,7 @@ function newSession() {
 }
 
 /* --- Vosk (offline, in the page) --- */
+let voskBuf = '', voskTimer = 0;
 let micStream = null, voskModel = null, voskRec = null, micProc = null, loudAvg = .02, lastLoud = 0, voskLoading = false;
 async function startVosk() {
   if (listenMode === 'vosk' || voskLoading) return true;
@@ -1364,8 +1373,16 @@ async function startVosk() {
     voskModel = await Vosk.createModel(URL.createObjectURL(new Blob([modelBytes])));
     const a = ac();
     voskRec = new voskModel.KaldiRecognizer(a.sampleRate);
-    voskRec.on('partialresult', m => heardPartial(m.result.partial));
-    voskRec.on('result', m => heardFinal(m.result.text));
+    voskRec.setWords(true);
+    voskRec.on('partialresult', m => { if (m.result.partial && voskBuf) clearTimeout(voskTimer); heardPartial(m.result.partial); });
+    voskRec.on('result', m => {
+      const r = m.result || {}, text = (r.text || '').replace(/\[unk\]/g, '').trim(), words = r.result || [];
+      if (!text) { if (!voskBuf) { utterQuick = false; utterStart = 0; } return; }
+      const conf = words.length ? words.reduce((a, w) => a + (w.conf || 0), 0) / words.length : 1;
+      if (conf < .6 && !QUICK(norm(text))) { if (!voskBuf) { utterQuick = false; utterStart = 0; } return; }
+      voskBuf = (voskBuf + ' ' + text).trim(); clearTimeout(voskTimer);
+      voskTimer = setTimeout(() => { const all = voskBuf; voskBuf = ''; heardFinal(all); }, 1000);
+    });
     const srcNode = a.createMediaStreamSource(micStream);
     micProc = a.createScriptProcessor(4096, 1, 1);
     const sink = a.createGain(); sink.gain.value = 0;
@@ -1515,10 +1532,12 @@ function unlock() {
   return false;
 }
 addEventListener('keydown', unlock);
+addEventListener('touchend', unlock, { passive: true });
+addEventListener('click', unlock);
 
 let taps = [];
 cvs.addEventListener('pointerdown', async e => {
-  if (unlock()) return;
+  if (!audioOk) return; // the first tap only wakes up sound and motion (handled on touchend/click)
   activity();
   if (await wake()) return;
   if (actionLock) return;

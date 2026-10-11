@@ -4,9 +4,9 @@ Ein kleiner Roboter auf dem Bildschirm, inspiriert von EMO. Man sieht nur seine 
 
 ## Öffnen
 
-**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v11/**
+**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v12/**
 
-Jede neue Version bekommt einen eigenen Link (`v11`, `v12`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 12`.
+Jede neue Version bekommt einen eigenen Link (`v12`, `v13`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 13`.
 
 Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gibt keine Knöpfe und keine Einstellungen.
 
@@ -15,11 +15,11 @@ Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gib
 - Beim allerersten Öffnen lädt EMO seine Stimme und seine Ohren (zusammen etwa 150 MB). Am besten im WLAN. Danach geht es schnell.
 - Falls der Browser Ton erst nach einer Berührung erlaubt, sagt EMO „Tipp mich einmal an“.
 
-**Ohne Extra** hat EMO ein eigenes **Wissensbuch** (`brain/wissen.js`, über 200 Fakten und 90 Hauptstädte: Tiere, Weltall, Erde, Körper, Erfindungen, Geschichte, Sport, Essen und Fragen über ihn selbst). Außerdem kennt er Witze (immer andere), das Wetter, Uhrzeit und Rechnen. Was nicht im Wissensbuch steht, schlägt er bei Wikipedia nach. Neue Fakten kann man einfach in `brain/wissen.js` dazuschreiben.
+**Ohne Extra** hat EMO ein eigenes **Wissensbuch** (`brain/wissen.js`, über 300 Fakten und 90 Hauptstädte: Tiere, Weltall, Erde, Körper, Warum-Fragen, Erfindungen, Geschichte, Feiertage, Schule, Sport, Essen, Gefühle und Fragen über ihn selbst). Außerdem kennt er Witze (immer andere), das Wetter, Uhrzeit und Rechnen. Was nicht im Wissensbuch steht, schlägt er bei Wikipedia nach. Neue Fakten kann man einfach in `brain/wissen.js` dazuschreiben.
 
 **Mit Claude-Gehirn** redet er über alles und sucht im Internet. Dafür EMO einmal mit diesem Link öffnen (Schlüssel von https://console.anthropic.com/settings/keys):
 
-`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v11/#key=DEIN-SCHLÜSSEL`
+`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v12/#key=DEIN-SCHLÜSSEL`
 
 Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse entfernt. Mit `#ort=Kassel` kann man den Wohnort für das Wetter ändern (Standard: Frankfurt am Main).
 
@@ -37,8 +37,9 @@ Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse en
 | „Gute Nacht“ / „Wach auf“ | schläft ein / wacht auf |
 | „Emo, mach Untertitel an“ / „Untertitel aus“ | zeigt an, was EMO sagt und was er gehört hat (normalerweise aus) |
 | Reinreden, während EMO spricht | er wird leise und hört dir zu |
+| Geräusche, Gemurmel, halbe Sätze | EMO bleibt ruhig und lässt dich ausreden, statt irgendwas zu sagen |
 | „Was hast du gesagt?“, „Sag das nochmal“, „Wie bitte?“ | wiederholt seinen letzten Satz |
-| Gerät schütteln | Kreisel-Augen, wird grün, Zunge hängt raus und wackelt, Schluckauf, ihm wird übel (am iPhone/iPad einmal antippen, damit er Bewegungen spüren darf) |
+| Gerät schütteln | Kreisel-Augen, wird grün, Zunge hängt raus und wackelt, Schluckauf, ihm wird übel (am iPhone/iPad einmal auf EMO tippen und bei „Bewegung und Ausrichtung“ auf „Erlauben“ tippen) |
 | „Sei still“ | hört auf zu reden |
 | „Vergiss alles“ | fängt ein neues Gespräch an |
 | „Kamera aus“ / „Kamera an“ | schaltet die Fingerpistolen-Erkennung aus oder an |
