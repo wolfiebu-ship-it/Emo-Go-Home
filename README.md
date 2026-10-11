@@ -4,22 +4,22 @@ Ein kleiner Roboter auf dem Bildschirm, inspiriert von EMO. Man sieht nur seine 
 
 ## Öffnen
 
-**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v7/**
+**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v8/**
 
-Jede neue Version bekommt einen eigenen Link (`v7`, `v8`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 8`.
+Jede neue Version bekommt einen eigenen Link (`v8`, `v9`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 9`.
 
 Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gibt keine Knöpfe und keine Einstellungen.
 
 - Auf dem iPhone und in Safari hört EMO mit seiner **eigenen Spracherkennung** zu. Dafür braucht man weder Siri noch die Diktierfunktion, nur die normale Mikrofon-Frage von Apple.
 - In Chrome und Edge benutzt er die Spracherkennung des Browsers.
-- Beim allerersten Öffnen lädt EMO seine Stimme und seine Ohren (zusammen etwa 100 MB). Am besten im WLAN. Danach geht es schnell.
+- Beim allerersten Öffnen lädt EMO seine Stimme und seine Ohren (zusammen etwa 150 MB). Am besten im WLAN. Danach geht es schnell.
 - Falls der Browser Ton erst nach einer Berührung erlaubt, sagt EMO „Tipp mich einmal an“.
 
 **Ohne Extra** kennt EMO Witze (immer andere), das Wetter, Uhrzeit, Rechnen und schlägt Wissensfragen bei Wikipedia nach.
 
 **Mit Claude-Gehirn** redet er über alles und sucht im Internet. Dafür EMO einmal mit diesem Link öffnen (Schlüssel von https://console.anthropic.com/settings/keys):
 
-`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v7/#key=DEIN-SCHLÜSSEL`
+`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v8/#key=DEIN-SCHLÜSSEL`
 
 Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse entfernt. Mit `#ort=Kassel` kann man den Wohnort für das Wetter ändern (Standard: Frankfurt am Main).
 
@@ -32,6 +32,7 @@ Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse en
 | „Peng!“, „Bang!“, „Boom!“ (jeder kurze Ruf, wenn die Hände oben sind) oder Fingerpistole hochzucken lassen | wird ins Auge getroffen (Riss, X-Augen, kippt um) oder weicht aus („Daneben!“) |
 | „Hände runter“ | nimmt die Hände runter |
 | „Erzähl einen Witz“ | erzählt jedes Mal einen anderen Witz |
+| „Zwei plus zwei“, „10 mal 5“, „hundert geteilt durch vier“ | rechnet (auch mit Zahlwörtern, Punkt vor Strich) |
 | „Tanz mal“, „Sing was“ | tanzt oder singt |
 | „Gute Nacht“ / „Wach auf“ | schläft ein / wacht auf |
 | „Emo, mach Untertitel an“ / „Untertitel aus“ | zeigt an, was EMO sagt und was er gehört hat (normalerweise aus) |

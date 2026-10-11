@@ -58,6 +58,7 @@ const cvs = $('#face'), ctx = cvs.getContext('2d');
 const off = document.createElement('canvas'), octx = off.getContext('2d');
 const glow = document.createElement('canvas'), gctx = glow.getContext('2d');
 let W = 0, H = 0, DPR = 1, S = 1;
+const FACE_Y = .4; // eye height on the screen (0 = top, .5 = middle)
 function resize() {
   DPR = Math.min(2, window.devicePixelRatio || 1);
   W = innerWidth; H = innerHeight;
@@ -227,11 +228,11 @@ function render(t) {
   g.setTransform(DPR, 0, 0, DPR, 0, 0);
   const sx = (Math.random() - .5) * shake * 18, sy = (Math.random() - .5) * shake * 18;
   g.save();
-  g.translate(W / 2 + face.x * S + sx, H / 2 + face.y * S + sy); g.rotate(face.rot); g.scale(face.sc, face.sc);
+  g.translate(W / 2 + face.x * S + sx, H * FACE_Y + face.y * S + sy); g.rotate(face.rot); g.scale(face.sc, face.sc);
   const gx = gaze.x * .085 * S, gy = gaze.y * .075 * S;
   for (let i = 0; i < 2; i++) { const side = i ? 1 : -1; drawEye(g, side * .27 * S + gx, gy - .02 * S, side, eyes[i], t); }
   if (hands.t > .01) {
-    const downY = H * .5 / face.sc + .3 * S, upY = -.02 * S;
+    const downY = H * (1 - FACE_Y) / face.sc + .3 * S, upY = -.02 * S;
     const y = lerp(downY, upY, hands.t);
     for (const side of [-1, 1]) {
       const trem = Math.sin(t / 22 + side) * hands.tremble * S * .006;
@@ -379,8 +380,9 @@ function melody(notes, step = .16) { const a = ac(); let t = a.currentTime + .03
 
 /* ================= EMO voice: natural neural voice (Piper), shifted up to a child's voice ================= */
 // The voice model speaks slower (length) and is played back faster (shift): pitch and formants rise like a child's, the tempo stays natural.
-const CHILD = { shift: 1.27, length: 1.16 };
-const ROBOT = { ring: .28, comb: .35 };
+const CHILD = { shift: 1.18, length: 1.2, noise: .4, noiseW: .55 };
+const ROBOT = { ring: 0, comb: .15 };
+const VOICE_FILE = 'voice/de-kerstin-low.onnx';
 let voiceAnalyser = null, currentVoiceSrc = null, deviceVoiceActive = false;
 let piper = null, piperLoading = null;
 const asset = p => new URL(p, document.baseURI).href;
@@ -388,7 +390,7 @@ const loadProg = { voice: 0, ears: 0 };
 let readyVoice = false, readyEars = false;
 function showLoad() {
   if (greeted) return;
-  const pct = Math.min(99, Math.round(USE_VOSK && listenMode === 'vosk' ? (loadProg.voice * 20 + loadProg.ears * 46) / 66 * 100 : loadProg.voice * 100));
+  const pct = Math.min(99, Math.round(USE_VOSK && listenMode === 'vosk' ? (loadProg.voice * 63 + loadProg.ears * 46) / 109 * 100 : loadProg.voice * 100));
   setSub(`Emo wacht auf … ${pct} %`, true);
 }
 async function fetchBytes(url, key) {
@@ -411,8 +413,8 @@ function loadVoice() {
     ort.env.wasm.numThreads = 1;
     ort.env.wasm.proxy = true;
     ort.env.wasm.wasmPaths = asset('voice/');
-    const cfg = await (await fetch(asset('voice/de-eva_k-x-low.onnx.json'))).json();
-    const sess = await ort.InferenceSession.create(await fetchBytes('voice/de-eva_k-x-low.onnx', 'voice'), { executionProviders: ['wasm'] });
+    const cfg = await (await fetch(asset(VOICE_FILE + '.json'))).json();
+    const sess = await ort.InferenceSession.create(await fetchBytes(VOICE_FILE, 'voice'), { executionProviders: ['wasm'] });
     let ids = null;
     const phon = await createPiperPhonemize({
       print: line => {
@@ -443,7 +445,7 @@ async function synthChild(text) {
   const out = await piper.sess.run({
     input: new ort.Tensor('int64', BigInt64Array.from(ids.map(BigInt)), [1, ids.length]),
     input_lengths: new ort.Tensor('int64', BigInt64Array.from([BigInt(ids.length)]), [1]),
-    scales: new ort.Tensor('float32', Float32Array.from([c.noise_scale, c.length_scale * CHILD.length, c.noise_w]), [3]),
+    scales: new ort.Tensor('float32', Float32Array.from([CHILD.noise, c.length_scale * CHILD.length, CHILD.noiseW]), [3]),
   });
   return out.output.data;
 }
@@ -467,7 +469,7 @@ function playPcm(pcm, rate) {
   const ringMix = a.createGain(); ringMix.gain.value = ROBOT.ring;
   const comb = a.createDelay(.05); comb.delayTime.value = .0038;
   const combMix = a.createGain(); combMix.gain.value = ROBOT.comb;
-  air.connect(ring); ring.connect(ringMix); ringMix.connect(out);
+  if (ROBOT.ring) { air.connect(ring); ring.connect(ringMix); ringMix.connect(out); }
   air.connect(comb); comb.connect(combMix); combMix.connect(out);
   carrier.start(); setTimeout(() => { try { carrier.stop(); } catch (e) {} }, (buf.duration / CHILD.shift) * 1000 + 600);
   if (!voiceAnalyser) { voiceAnalyser = a.createAnalyser(); voiceAnalyser.fftSize = 512; voiceAnalyser.connect(master); }
@@ -554,7 +556,7 @@ async function wake(quiet) {
   if (!quiet) await say(pick(['Huch! Ich bin wach!', 'Hä? Was ist los?', 'Uaah … guten Morgen!']), 'surprised');
   return true;
 }
-function eyeScreenPos(i) { const side = i ? 1 : -1; return { x: W / 2 + face.x * S + side * .27 * S * face.sc, y: H / 2 + face.y * S - .02 * S }; }
+function eyeScreenPos(i) { const side = i ? 1 : -1; return { x: W / 2 + face.x * S + side * .27 * S * face.sc, y: H * FACE_Y + face.y * S - .02 * S }; }
 function burst(x, y, n, colors) { for (let i = 0; i < n; i++) { const a = rand(0, Math.PI * 2), sp = rand(150, 650); sparks.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 200, r: rand(1.5, 4), life: rand(.5, 1), c: pick(colors) }); } }
 
 function raiseHands(viaGun) {
@@ -604,7 +606,7 @@ async function getHit() {
 }
 async function dodge() {
   const dir = Math.random() < .5 ? -1 : 1, duck = Math.random() < .3;
-  const where = { x: W / 2 + face.x * S, y: H / 2 + face.y * S };
+  const where = { x: W / 2 + face.x * S, y: H * FACE_Y + face.y * S };
   face.k = 26; sfxWhoosh();
   if (duck) { face.ty = .62; face.tsc = .85; } else { face.tx = dir * .62; face.trot = dir * .25; }
   setExpr('surprised', 0);
@@ -646,6 +648,65 @@ async function sing() {
 async function goSleep() {
   await say(pick(['Gute Nacht! Ich schlafe jetzt.', 'Okay … ich bin auch müde.']), 'sleepy');
   await wait(600); asleep = true; applyExpr('asleep'); setSub('');
+}
+
+/* ================= Rechnen: "zwei plus zwei", "10 mal 5", "dreiundzwanzig minus sieben" ================= */
+const NUMW = { null: 0, eins: 1, ein: 1, eine: 1, einen: 1, zwei: 2, zwo: 2, drei: 3, vier: 4, fünf: 5, sechs: 6, sieben: 7, acht: 8, neun: 9, zehn: 10, elf: 11, zwölf: 12, dreizehn: 13, vierzehn: 14, fünfzehn: 15, sechzehn: 16, siebzehn: 17, achtzehn: 18, neunzehn: 19, zwanzig: 20, dreißig: 30, dreissig: 30, vierzig: 40, fünfzig: 50, sechzig: 60, siebzig: 70, achtzig: 80, neunzig: 90 };
+function wordNum(w) {
+  if (w === '') return 0;
+  if (/^\d+(,\d+)?$/.test(w)) return parseFloat(w.replace(',', '.'));
+  if (w in NUMW) return NUMW[w];
+  for (const [word, val] of [['million', 1e6], ['tausend', 1000], ['hundert', 100]]) {
+    const i = w.indexOf(word);
+    if (i >= 0) {
+      const a = w.slice(0, i), b = w.slice(i + word.length).replace(/^en\b|^en/, '');
+      const A = a ? wordNum(a) : 1, B = wordNum(b);
+      return A == null || B == null ? null : A * val + B;
+    }
+  }
+  const u = w.indexOf('und');
+  if (u > 0) { const one = wordNum(w.slice(0, u)), ten = wordNum(w.slice(u + 3)); if (one != null && ten != null && one < 10 && ten >= 20 && ten % 10 === 0) return ten + one; }
+  return null;
+}
+function mathAnswer(raw) {
+  const text = ' ' + raw.toLowerCase()
+    .replace(/(\d)\s*[x×*]\s*(\d)/g, '$1 mal $2').replace(/[×*]/g, ' mal ').replace(/[÷/:]/g, ' durch ').replace(/\+/g, ' plus ').replace(/(\d)\s*[-−]\s*(\d)/g, '$1 minus $2')
+    .replace(/(\d)\.(\d{3})/g, '$1$2').replace(/(\d)\.(\d)/g, '$1,$2')
+    .replace(/geteilt durch|dividiert durch|geteilt/g, ' durch ').replace(/multipliziert mit/g, ' mal ').replace(/\bmalnehmen\b/g, ' mal ').replace(/\b(\w+)mal\b/g, '$1 mal')
+    .replace(/[^a-zäöüß0-9, ]/g, ' ') + ' ';
+  const OPS = { plus: '+', und: null, minus: '-', weniger: '-', mal: '*', durch: '/' };
+  const words = text.split(/\s+/).filter(Boolean);
+  // group number words into numbers ("zwei hundert drei" -> 203)
+  const toks = [];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (OPS[w]) { toks.push({ op: OPS[w], word: w }); continue; }
+    let j = i, best = null, bestJ = i - 1;
+    for (let k = i; k < Math.min(words.length, i + 4); k++) { const n = wordNum(words.slice(i, k + 1).join('').replace(/,$/, '')); if (n == null) break; best = n; bestJ = k; }
+    if (best != null) { toks.push({ num: best, word: words.slice(i, bestJ + 1).join(' ') }); i = bestJ; }
+    else toks.push({ other: w });
+  }
+  // find the first "number op number (op number)*" run
+  for (let i = 0; i < toks.length; i++) {
+    if (toks[i].num == null) continue;
+    const run = [toks[i]]; let j = i + 1;
+    while (j + 1 < toks.length && toks[j].op && toks[j + 1].num != null) { run.push(toks[j], toks[j + 1]); j += 2; }
+    if (run.length < 3) continue;
+    // multiplication and division first, then plus and minus
+    const vals = [run[0].num], ops = [];
+    for (let k = 1; k < run.length; k += 2) {
+      const op = run[k].op, n = run[k + 1].num;
+      if (op === '*') vals.push(vals.pop() * n);
+      else if (op === '/') { if (n === 0) return { text: 'Durch null teilen? Da raucht mein Kopf! Das geht nicht.', mood: 'dizzy' }; vals.push(vals.pop() / n); }
+      else { ops.push(op); vals.push(n); }
+    }
+    let res = vals[0]; ops.forEach((op, k) => { res = op === '+' ? res + vals[k + 1] : res - vals[k + 1]; });
+    const fmt = n => (Math.round(n * 1000) / 1000).toLocaleString('de-DE', { maximumFractionDigits: 3 });
+    const said = run.map(t => t.num != null ? fmt(t.num) : t.word === 'weniger' ? 'minus' : t.word).join(' ');
+    const tail = pick(['', ' Bin ich schlau?', ' Hihi, easy!', ' Das war leicht!']);
+    return { text: `${said} ist ${fmt(res)}!${tail}`, mood: pick(['smug', 'happy']) };
+  }
+  return null;
 }
 
 /* ================= What EMO hears ================= */
@@ -712,6 +773,8 @@ async function handleInput(raw) {
   if (actionLock || thinking) return;
   if (speaking) { stopVoice(); sayToken++; speaking = false; }
   const woke = await wake(true);
+  const m = mathAnswer(raw);
+  if (m) return say(m.text, m.mood);
   for (const [re, fn] of ACTION_RULES) if (typeof re === 'function' ? re(t) : re.test(t)) return fn();
   if (hasBrain()) return askBrain(raw);
   return localBrain(t, woke);
@@ -846,13 +909,6 @@ async function localBrain(t, woke) {
     [/wie sp(ä|ae)t|uhrzeit|wie viel uhr/, () => { const d = new Date(); say(`Es ist ${d.getHours()} Uhr ${d.getMinutes()}.`, 'curious'); }],
     [/welcher tag|welches datum|was ist heute/, () => say(`Heute ist ${new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}.`, 'curious')],
     [/würfel/, () => { const n = 1 + Math.floor(Math.random() * 6); say(`Ich würfle … eine ${n}!`, n === 6 ? 'laugh' : 'curious'); }],
-    [/(\d+(?:[.,]\d+)?)\s*(plus|\+|minus|-|mal|x|\*|geteilt durch|durch|\/)\s*(\d+(?:[.,]\d+)?)/, () => {
-      const m = t.match(/(\d+(?:[.,]\d+)?)\s*(plus|\+|minus|-|mal|x|\*|geteilt durch|durch|\/)\s*(\d+(?:[.,]\d+)?)/);
-      const a = parseFloat(m[1].replace(',', '.')), b2 = parseFloat(m[3].replace(',', '.')), op = m[2]; let r;
-      if (/plus|\+/.test(op)) r = a + b2; else if (/minus|-/.test(op)) r = a - b2; else if (/mal|x|\*/.test(op)) r = a * b2; else r = b2 === 0 ? null : a / b2;
-      if (r === null) return say('Durch null teilen? Da raucht mein Kopf!', 'dizzy');
-      say(`Das ist ${String(Math.round(r * 100) / 100).replace('.', ',')}! Bin ich schlau?`, 'smug');
-    }],
   ];
   for (const [re, fn] of R) if (re.test(t)) return fn();
   if (QUESTION.test(t) && await wikiAnswer(t)) return;
