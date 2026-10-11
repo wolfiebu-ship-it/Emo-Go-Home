@@ -64,7 +64,7 @@ function resize() {
   W = innerWidth; H = innerHeight;
   for (const c of [cvs, off]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
   glow.width = Math.max(1, Math.round(W / 4)); glow.height = Math.max(1, Math.round(H / 4));
-  S = Math.min(W / 2.2, H * 0.55);
+  S = Math.min(W / 1.75, H * 0.9);
 }
 addEventListener('resize', resize); resize();
 
