@@ -487,9 +487,13 @@ function update(dt, t) {
     crying -= realDt;
     if (t > nextTear) {
       nextTear = t + rand(90, 180);
-      const broken = eyes.findIndex(e => e.broken), j = broken === 0 ? 1 : 0, p = eyeScreenPos(j);
-      // two little streams of tears from the corners of the eye that still works
-      for (const side of [-1, 1]) if (Math.random() < .7) tears.push({ x: p.x + side * rand(.08, .13) * S, y: p.y + .16 * S, vy: rand(10, 50), r: S * rand(.02, .032), life: 1.8 });
+      const broken = eyes.findIndex(e => e.broken);
+      // little streams of tears from the corners of every eye that still works
+      for (const j of [0, 1]) {
+        if (j === broken) continue;
+        const p = eyeScreenPos(j);
+        for (const side of [-1, 1]) if (Math.random() < (broken >= 0 ? .7 : .4)) tears.push({ x: p.x + side * rand(.08, .13) * S, y: p.y + .16 * S, vy: rand(10, 50), r: S * rand(.02, .032), life: 1.8 });
+      }
       if (broken >= 0 && Math.random() < .35) { const q = eyeScreenPos(broken); tears.push({ x: q.x + rand(-.08, .08) * S, y: q.y + .17 * S, vy: 30, r: S * .012, life: 1.2 }); }
     }
   }
