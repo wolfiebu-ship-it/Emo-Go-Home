@@ -82,7 +82,7 @@ const ease = (k, dt) => 1 - Math.exp(-k * dt);
 const lerp = (a, b, t) => a + (b - a) * t;
 
 /* ================= Settings ================= */
-const settings = { voiceMode: 'child', voiceName: '', pitch: 72, rate: 1.12, dodge: 45, cam: false, subs: false, apiKey: '', place: '' };
+const settings = { voiceMode: 'child', voiceName: '', pitch: 72, rate: 1.12, dodge: 45, cam: false, subs: false, volume: 1, apiKey: '', place: '' };
 try {
   const old = JSON.parse(localStorage.getItem('emo-settings2') || '{}');
   if (old.apiKey) settings.apiKey = old.apiKey;
@@ -277,7 +277,7 @@ function render(t) {
     }
   }
   if (hands.t > .01) {
-    const downY = H * (1 - FACE_Y) / face.sc + .3 * S, upY = -.02 * S;
+    const downY = H * (1 - FACE_Y) / face.sc + .3 * S, upY = .17 * S;
     const y = lerp(downY, upY, hands.t);
     for (const side of [-1, 1]) {
       const trem = Math.sin(t / 22 + side) * hands.tremble * S * .006;
@@ -427,7 +427,7 @@ function update(dt, t) {
   gaze.x += (gaze.tx - gaze.x) * ease(11, dt); gaze.y += (gaze.ty - gaze.y) * ease(11, dt);
   face.x += (face.tx - face.x) * ease(face.k, dt); face.y += (face.ty - face.y) * ease(face.k, dt);
   face.rot += (face.trot - face.rot) * ease(face.k, dt); face.sc += (face.tsc - face.sc) * ease(face.k, dt);
-  hands.v += (hands.target - hands.t) * 140 * dt; hands.v *= Math.exp(-9 * dt); hands.t += hands.v * dt;
+  hands.v += (hands.target - hands.t) * 260 * dt; hands.v *= Math.exp(-9 * dt); hands.t += hands.v * dt;
   if (timeScale < .6 && t - lastTrail > 45) { lastTrail = t; trail.push({ x: face.x, y: face.y, rot: face.rot, sc: face.sc }); if (trail.length > 7) trail.shift(); }
   else if (timeScale > .9 && trail.length && t - lastTrail > 40) { lastTrail = t; trail.shift(); }
   glitch *= Math.exp(-2.5 * realDt);
@@ -509,8 +509,11 @@ let AC = null, master = null;
 function ac() {
   if (!AC) {
     AC = new (window.AudioContext || window.webkitAudioContext)();
-    const comp = AC.createDynamicsCompressor(); comp.connect(AC.destination);
-    master = AC.createGain(); master.gain.value = 1; master.connect(comp);
+    // a limiter at the end lets EMO be loud without crackling
+    const comp = AC.createDynamicsCompressor();
+    comp.threshold.value = -8; comp.knee.value = 6; comp.ratio.value = 20; comp.attack.value = .002; comp.release.value = .2;
+    comp.connect(AC.destination);
+    master = AC.createGain(); master.gain.value = 1.8 * settings.volume; master.connect(comp);
   }
   if (AC.state === 'suspended') AC.resume();
   return AC;
@@ -645,7 +648,7 @@ function playPcm(pcm, rate) {
   const src = a.createBufferSource(); src.buffer = buf; src.playbackRate.value = CHILD.shift;
   const hp = a.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 140;
   const air = a.createBiquadFilter(); air.type = 'highshelf'; air.frequency.value = 4500; air.gain.value = 3;
-  const out = a.createGain(); out.gain.value = 1.5;
+  const out = a.createGain(); out.gain.value = 3;
   src.connect(hp); hp.connect(air); air.connect(out);
   // a light robot shimmer: ring modulation plus a tiny metallic echo
   const ring = a.createGain(); ring.gain.value = 0;
@@ -768,12 +771,14 @@ async function wake(quiet) {
 function eyeScreenPos(i) { const side = i ? 1 : -1; return { x: W / 2 + face.x * S + side * .27 * S * face.sc, y: H * FACE_Y + face.y * S - .02 * S }; }
 function burst(x, y, n, colors) { for (let i = 0; i < n; i++) { const a = rand(0, Math.PI * 2), sp = rand(150, 650); sparks.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 200, r: rand(1.5, 4), life: rand(.5, 1), c: pick(colors) }); } }
 
+// "Hände hoch": up they go, right away and without a word
 function raiseHands(viaGun) {
   if (actionLock || hands.target > .5) return;
-  wake(true); activity();
-  hands.target = 1; hands.since = now(); hands.wave = .3; hands.tremble = 1;
-  sfxEek(); lookAt(0, 0, 3000);
-  say(pick(viaGun ? ['Okay, okay! Nicht schießen!', 'Hilfe! Eine Pistole!', 'Ich ergebe mich!'] : ['Okay! Hände hoch!', 'Ich war das nicht!', 'Nicht schießen, bitte!']), 'scared', 4000);
+  if (speaking) { stopVoice(); sayToken++; speaking = false; lastSaidEnd = now(); }
+  if (asleep) { asleep = false; bootT = 1; }
+  activity();
+  hands.target = 1; hands.since = now(); hands.wave = .3; hands.tremble = 1; hands.v = 6;
+  setExpr('scared', 0); lookAt(0, 0, 3000);
 }
 function lowerHands(silent) {
   if (hands.target < .5) return;
@@ -975,7 +980,8 @@ function fuzzyHandsUp(t) {
   }
   return false;
 }
-const fuzzyBang = t => t.split(' ').map(simp).some(x => x.length >= 3 && x.length <= 6 && ['peng', 'beng', 'bang', 'pang', 'bumm', 'boom', 'bum'].some(k => lev(x, k) <= 1));
+const BANG_NOT = new Set(['bank', 'band', 'bunt', 'bund', 'ball', 'bahn', 'baum', 'bein', 'bett', 'berg', 'bums', 'pony']);
+const fuzzyBang = t => t.split(' ').map(simp).some(x => x.length >= 4 && x.length <= 6 && /^[pb]/.test(x) && !BANG_NOT.has(x) && ['peng', 'beng', 'bang', 'pang', 'bumm', 'boom'].some(k => lev(x, k) <= 1));
 const HANDS_DOWN = /\b(h(ä|a|e)nde?|arme)\s*(wieder\s*)?(runter|nach unten)/;
 const norm = s => s.toLowerCase().replace(/[!?.,;:"'„“]/g, ' ').replace(/\s+/g, ' ').trim().replace(/^(hey |hallo |ok |okay |du )?(emo|emma|ema|nemo|imo|e-mo)\b\s*/, '$1').trim();
 function subsSaid(t) { return /unter ?titel|untertitle/.test(t) || t.split(' ').some(w => w.length >= 8 && lev(simp(w), 'untertitel') <= 2); }
@@ -984,7 +990,14 @@ function setSubs(on) {
   if (!on) { $('#subtitle').textContent = ''; $('#heard').textContent = ''; }
   say(on ? 'Okay! Jetzt kannst du mitlesen.' : 'Okay, Untertitel sind aus.', 'happy');
 }
+function setVolume(v, msg) {
+  settings.volume = Math.max(.4, Math.min(3, v)); saveSettings();
+  if (master) master.gain.value = 1.8 * settings.volume;
+  say(msg, 'happy');
+}
 const ACTION_RULES = [
+  [/\b(lauter|laut sprechen|rede laut|sprich laut|ich hör dich nicht|ich höre dich nicht|ich hör dich kaum|ich höre dich kaum)\b/, () => setVolume(settings.volume * 1.4, settings.volume >= 3 ? 'Lauter geht nicht mehr! Mach dein Gerät lauter.' : 'Okay! Ich rede jetzt lauter. Ist das besser?')],
+  [/\b(leiser|sprich leise|rede leise|zu laut)\b/, () => setVolume(settings.volume / 1.4, 'Okay, ich rede jetzt leiser.')],
   [/was hast du (da |eben |gerade |grad )?(noch ?mal |nochmal )?gesagt|wiederhol|sag (das|es) (bitte )?(noch ?mal|nochmal)|noch ?mal bitte|^wie bitte|nicht verstanden/, () => repeatLast()],
   [t => subsSaid(t) && /\b(aus|weg|ab|stopp|ausschalten|ausmachen|nicht mehr)\b/.test(t), () => setSubs(false)],
   [t => subsSaid(t), () => setSubs(true)],
@@ -1013,11 +1026,13 @@ function isEcho(t) {
   const hit = heard.filter(w => said.has(w)).length;
   return heard.length > 1 && hit / heard.length > .6;
 }
+const FILLER = /^((ach|achso|ach so|aso|aha|ah|oh|okay|ok|okey|ja|jaa|jo|jep|nein|nö|hm+|äh+|ähm|mhm|so|also|gut|cool|krass|nice|alles klad|alles klar|na|naja|egal|und|tja|aha okay|ja ja|ach so okay|ok cool)\s*)+$/;
 async function handleInput(raw) {
   const t = norm(raw);
   if (!t && /\b(emo|emma|nemo)\b/i.test(raw) && !actionLock && !thinking) { await wake(true); return say(pick(['Ja? Ich höre!', 'Hm? Was gibt\'s?', 'Hier bin ich!']), 'curious'); }
   if (!t || t.length < 2) return;
   if (isEcho(t)) return;
+  if (FILLER.test(t)) { activity(); setExpr('happy', 900); return; }
   setHeard(raw); activity();
   if (quickAction(t)) return;
   if (actionLock || thinking) return;
@@ -1180,21 +1195,22 @@ async function localBrain(t, woke) {
     [/wie alt bist du/, () => say('Ich bin noch ein Baby-Roboter. Erst ein paar Tage alt!', 'smug')],
     [/hab dich (lieb|gern)|liebe dich|du bist (so )?(süß|toll|cool|lieb|der beste)/, () => { sfxGiggle(); say(pick(['Ich hab dich auch lieb!', 'Aww, du machst mich ganz verlegen!', 'Du bist auch der Beste!']), 'love', 3500); }],
     [/\b(dumm|blöd|doof|hässlich|nervig|du stinkst)\b/, async () => { await say('Hey! Das ist gemein!', 'angry'); await say('Jetzt bin ich traurig.', 'sad'); }],
-    [/\bdanke\b/, () => say(pick(['Gern geschehen!', 'Bitte bitte!', 'Immer wieder gern!']), 'happy')],
+    [/^(danke|dankeschön|vielen dank)( dir| schön| emo)?$/, () => say(pick(['Gern geschehen!', 'Bitte bitte!', 'Immer wieder gern!']), 'happy')],
     [/tschüss|tschau|\bbye\b|bis (bald|später|morgen)/, () => say('Tschüss! Komm bald wieder!', 'sad')],
+    [/(kannst|hörst) du mich( hören| verstehen)?$|hörst du mich|verstehst du mich/, () => say(pick(['Ja, ich höre dich gut!', 'Klar, ich verstehe dich!']), 'happy')],
     [/was kannst du/, () => say('Ich kann Witze erzählen, tanzen, singen, das Wetter sagen und Fragen beantworten. Und ausweichen! Sag mal Hände hoch!', 'smug')],
-    [/hunger|isst du|was (isst|frisst)/, () => say('Ich esse Strom! Mmmh, lecker Volt!', 'laugh')],
+    [/hast du hunger|\bisst du\b|\bfrisst du\b/, () => say('Ich esse Strom! Mmmh, lecker Volt!', 'laugh')],
     [/\b(buh|bu+h)\b|erschreck/, () => { sfxEek(); shake = .4; say('Aaah! Hast du mich erschreckt!', 'scared'); }],
     [/wie sp(ä|ae)t|uhrzeit|wie viel uhr/, () => { const d = new Date(); say(`Es ist ${d.getHours()} Uhr ${d.getMinutes()}.`, 'curious'); }],
     [/welcher tag|welches datum|was ist heute/, () => say(`Heute ist ${new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}.`, 'curious')],
     [/würfel/, () => { const n = 1 + Math.floor(Math.random() * 6); say(`Ich würfle … eine ${n}!`, n === 6 ? 'laugh' : 'curious'); }],
   ];
   for (const [re, fn] of R) if (re.test(t)) return fn();
-  const asks = QUESTION.test(t) || t.split(' ').length >= 4;
+  const asks = QUESTION.test(t);
   const known = asks ? knowledgeAnswer(t) : null;
   if (known) return say(known, pick(['happy', 'curious', 'smug']), 6000);
   if (QUESTION.test(t) && t.split(' ').length >= 2 && await wikiAnswer(t)) return;
-  if (QUESTION.test(t) && t.split(' ').length >= 3) return say(pick(['Hmm, das weiß ich leider noch nicht.', 'Das steht noch nicht in meinem Wissensbuch.']), 'curious');
+  if (/^(und )?(was|wer|wo|wann|wie|warum|wieso|weshalb|welche[rsmn]?)\b/.test(t) && t.split(' ').length >= 3) return say(pick(['Hmm, das weiß ich leider noch nicht.', 'Das steht noch nicht in meinem Wissensbuch.']), 'curious');
   if (woke) return say('Huch! Ich bin wach. Was hast du gesagt?', 'surprised');
   // not a question and nothing EMO knows: he just listens instead of saying something random
   setExpr('curious', 1500); lookAt(0, 0, 1500);
@@ -1358,8 +1374,6 @@ function heardFinal(txt) {
   if (QUICK(t) && !isEcho(t)) { setHeard(txt); activity(); quickAction(t); return; }
   // something that started while EMO was talking is most likely EMO hearing himself
   if (listenMode === 'vosk' && duringSpeech) return;
-  // with hands up, any short shout counts as "Peng"
-  if (hands.target > .5 && !actionLock && t.split(' ').length <= 2 && t.length <= 9 && !isEcho(t)) { setHeard(txt); return bang(); }
   handleInput(txt);
 }
 
@@ -1477,13 +1491,13 @@ function loudCheck(d) {
   if (rms > Math.max(.02, noiseFloor * 3.5)) {
     if (!segLoud) { segLoud = true; segStart = t; }
     segLast = t;
-    if (armed && rms > .3 && rms > loudAvg * 6) { lastLoud = t; segLoud = false; bang(); }
+    if (armed && rms > .38 && rms > loudAvg * 7) { lastLoud = t; segLoud = false; bang(); }
   } else {
     noiseFloor = noiseFloor * .97 + rms * .03;
     if (segLoud && t - segLast > 250) {
       segLoud = false;
       const dur = segLast - segStart;
-      if (armed && dur > 60 && dur < 650) { lastLoud = t; bang(); }
+      // (short sounds alone no longer count as a shot: that fired by itself too often)
     }
   }
   loudAvg = loudAvg * .95 + rms * .05;
