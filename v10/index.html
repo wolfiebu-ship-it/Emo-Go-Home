@@ -117,6 +117,7 @@ let nextSaccade = now() + 1500;
 let exprName = 'neutral', exprUntil = Infinity;
 let shake = 0, flash = 0;
 // slow motion, glitch and after-images for the "Peng" scenes
+let shakeEnergy = 0, shakeTime = 0, calmTime = 0, lastAcc = null, dizzy = false, tongue = 0, motionOn = false;
 let timeScale = 1, timeTarget = 1, glitch = 0, trail = [], lastTrail = 0, sweat = null;
 let bullets = [], screenCracks = [], sparks = [];
 let thinking = false, speaking = false, talkLevel = 0;
@@ -262,6 +263,7 @@ function render(t) {
       drawHand(g, side * .76 * S + trem, y + Math.sin(t / 180 + side) * S * .01, side, side * (.12 + Math.sin(t / 160) * .14 * hands.wave), t);
     }
   }
+  drawTongue(g, t);
   if (thinking) {
     for (let i = 0; i < 3; i++) { const a = (Math.sin(t / 200 - i * .9) + 1) / 2; g.globalAlpha = .3 + a * .7; g.fillStyle = EYE; g.beginPath(); g.arc((i - 1) * .07 * S, .3 * S, .018 * S, 0, Math.PI * 2); g.fill(); }
     g.globalAlpha = 1;
@@ -316,6 +318,54 @@ function render(t) {
   if (flash > .01) { ctx.fillStyle = `rgba(255,248,225,${flash * .8})`; ctx.fillRect(0, 0, cvs.width, cvs.height); }
 }
 
+/* ================= Shaking the device ================= */
+function onMotion(e) {
+  const a = e.accelerationIncludingGravity || e.acceleration; if (!a || a.x == null) return;
+  if (lastAcc) { const d = Math.abs(a.x - lastAcc.x) + Math.abs(a.y - lastAcc.y) + Math.abs(a.z - lastAcc.z); shakeEnergy = Math.max(shakeEnergy * .9, d); }
+  lastAcc = { x: a.x, y: a.y, z: a.z };
+}
+function startMotion() {
+  if (motionOn) return;
+  const D = window.DeviceMotionEvent; if (!D) return;
+  // iPhone/iPad ask once ("Bewegung und Ausrichtung"); that question needs a touch, so it comes with the first tap
+  if (typeof D.requestPermission === 'function') D.requestPermission().then(r => { if (r === 'granted' && !motionOn) { motionOn = true; addEventListener('devicemotion', onMotion); } }).catch(() => {});
+  else { motionOn = true; addEventListener('devicemotion', onMotion); }
+}
+function shakeStep(dt, t) {
+  shakeEnergy *= Math.exp(-4 * dt);
+  const shaking = shakeEnergy > 9;
+  shakeTime = shaking ? shakeTime + dt : Math.max(0, shakeTime - dt * 2);
+  if (shaking && shakeTime > .45 && !dizzy && !actionLock && started) {
+    dizzy = true; calmTime = 0; stopVoice(); sayToken++; speaking = false;
+    eyes.forEach(e => e.special = 'spiral'); exprUntil = Infinity; sfxGlitch();
+    say(pick(['Huiii! Aufhören! Mir wird schwindelig!', 'Waaah! Nicht schütteln!', 'Hiiilfe, alles dreht sich!']), null);
+  }
+  if (dizzy) {
+    tongue = Math.min(1, tongue + dt * 2.5);
+    eyes.forEach(e => e.special = 'spiral');
+    face.trot = Math.sin(t / 140) * .18 * (shaking ? 1.6 : 1); face.tx = Math.sin(t / 230) * .05;
+    calmTime = shaking ? 0 : calmTime + dt;
+    if (calmTime > 2.6) {
+      dizzy = false; face.trot = 0; face.tx = 0;
+      eyes.forEach(e => e.special = null);
+      say(pick(['Uff … mir ist ganz übel. Bitte nicht mehr schütteln!', 'Bläh … alles dreht sich noch. Mach das bitte nicht nochmal.', 'Puh … mein Bauch … ich hab gar keinen Bauch, aber trotzdem!']), 'sad', 3500);
+    }
+  } else tongue = Math.max(0, tongue - dt * 2);
+}
+function drawTongue(g, t) {
+  if (tongue < .02) return;
+  const L = .2 * S * tongue, w = .12 * S, swing = Math.sin(t / 110) * .45 * (dizzy ? 1 : .3);
+  g.save(); g.translate(0, .23 * S);
+  // little mouth line
+  g.strokeStyle = EYE; g.lineWidth = Math.max(2, S * .012); g.lineCap = 'round';
+  g.beginPath(); g.moveTo(-w * .9, 0); g.quadraticCurveTo(0, S * .03, w * .9, 0); g.stroke();
+  g.rotate(swing);
+  g.fillStyle = '#ff6f91';
+  g.beginPath(); g.moveTo(-w / 2, 0); g.lineTo(-w / 2, L - w / 2); g.arc(0, L - w / 2, w / 2, Math.PI, 0, true); g.lineTo(w / 2, 0); g.closePath(); g.fill();
+  g.strokeStyle = '#d94a72'; g.lineWidth = Math.max(1.5, S * .008); g.beginPath(); g.moveTo(0, S * .01); g.lineTo(0, L * .7); g.stroke();
+  g.restore();
+}
+
 /* ================= Update loop ================= */
 let levelBuf = null;
 function update(dt, t) {
@@ -360,6 +410,9 @@ function update(dt, t) {
   if (!asleep && started && !actionLock && !speaking && !thinking && t - lastActive > 180000) { asleep = true; applyExpr('asleep'); setSub(''); }
   if (asleep && started && Math.random() < dt * .25) sfxSnore();
 
+  // the device's recognizer never started (or hears speech but never understands anything): switch to EMO's own ears
+  if (listenMode === 'web' && !webWorked && ((speechSeenAt && t - speechSeenAt > 10000) || (!webStarted && webAskedAt && t - webAskedAt > 12000))) { speechSeenAt = 0; fallbackToVosk(); }
+  shakeStep(realDt, t);
   if (hands.target > .5 && !actionLock && !speaking && t - hands.since > 15000) { hands.since = t + 1e9; lowerHands(); }
 
   shake *= Math.exp(-7 * realDt); flash *= Math.exp(-9 * realDt);
@@ -442,7 +495,7 @@ const loadProg = { voice: 0, ears: 0 };
 let readyVoice = false, readyEars = false;
 function showLoad() {
   if (greeted) return;
-  const pct = Math.min(99, Math.round(USE_VOSK && listenMode === 'vosk' ? (loadProg.voice * 63 + loadProg.ears * 46) / 109 * 100 : loadProg.voice * 100));
+  const pct = Math.min(99, Math.round(listenMode === 'vosk' || voskLoading ? (loadProg.voice * 63 + loadProg.ears * 46) / 109 * 100 : loadProg.voice * 100));
   setSub(`Emo wacht auf … ${pct} %`, true);
 }
 async function fetchBytes(url, key) {
@@ -695,7 +748,7 @@ async function getHit() {
   eyes.forEach(e => { e.special = null; e.flicker = 0; if (e.crack) e.crack.fading = true; });
   sfxPowerUp(); bootT = .1;
   await wait(500);
-  await say(pick(['Hihi, nur Spaß! Ich bin unkaputtbar!', 'Reingelegt! Mir geht es super!', 'Neustart fertig. Ich lebe noch!']), 'laugh');
+  await say(pick(['Autsch! Zum Glück bin ich ein Roboter. Aber bitte nicht nochmal!', 'Neustart fertig. Puh, ich lebe noch!', 'Aua. Alles wieder heile. Spielen wir was anderes?']), 'sad');
 }
 // Dodge: like in the movies. Time slows down, EMO leans away and the bullet misses him by a hair.
 async function dodge() {
@@ -720,7 +773,7 @@ async function dodge() {
   await wait(250);
   sweat = { t0: now(), side: dir > 0 ? -1 : 1 };
   lookAt(0, 0, 2500);
-  await say(pick(['Puh! Das war knapp!', 'Matrix-Modus! Hihi!', 'Daneben! Ich bin zu schnell für dich!', 'Uff, knapp vorbei!', 'Ha! Nicht mit mir!']), Math.random() < .5 ? 'smug' : 'wink', 2400);
+  await say(pick(['Puh! Das war knapp! Bitte mach das nicht nochmal.', 'Uff, ganz knapp vorbei! Mein Herz rast!', 'Huch! Das war knapp. Können wir lieber was Nettes spielen?', 'Puh, Glück gehabt! Bitte nicht nochmal schießen, ja?']), 'surprised', 2600);
   lowerHands(true);
 }
 async function dance() {
@@ -1151,7 +1204,10 @@ async function askBrain(text) {
 // Safari/iPhone: EMO's own offline recognizer (Vosk). It only needs Apple's normal microphone prompt, no Siri or dictation settings.
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const IS_IOS = /iPhone|iPad|iPod/.test(UA) || (/Macintosh/.test(UA) && navigator.maxTouchPoints > 1);
-const USE_VOSK = IS_SAFARI || IS_IOS || !SR;
+// The device's own recognizer (Apple/Google) is much more accurate, so EMO tries it first.
+// If it isn't there or doesn't work, he quietly switches to his own offline recognizer (Vosk).
+const USE_VOSK = !SR;
+let webWorked = false, speechSeenAt = 0, webEnds = [], webStarted = false, webAskedAt = 0;
 let rec = null, micOn = false, listenMode = '', consumed = 0, finalizeTimer = 0, restartTimer = 0;
 const QUICK = t => handsUpSaid(t) || bangSaid(t) || HANDS_DOWN.test(t);
 
@@ -1182,9 +1238,16 @@ function heardFinal(txt) {
 function earsReady() { readyEars = true; maybeGreet(); }
 function startListening() {
   if (micOn || voskLoading) return;
-  if (USE_VOSK) startVosk().then(ok => { if (!ok && SR && !IS_IOS) startMic(); earsReady(); });
+  if (USE_VOSK) startVosk().then(earsReady);
   else { startMic(); earsReady(); }
 }
+function fallbackToVosk() {
+  if (listenMode === 'vosk' || voskLoading) return;
+  const r = rec; rec = null; micOn = false; listenMode = ''; earState();
+  try { r && r.abort(); } catch (e) {}
+  readyEars = false; startVosk().then(earsReady);
+}
+function restartRec() { const r = rec; rec = null; try { r && r.abort(); } catch (e) {} restartTimer = setTimeout(newSession, 200); }
 
 /* --- Web Speech API --- */
 function startMic() {
@@ -1198,8 +1261,12 @@ function newSession() {
   consumed = 0;
   rec = new SR(); rec.lang = 'de-DE'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
   const me = rec;
+  if (!webAskedAt) webAskedAt = now();
+  rec.onstart = rec.onaudiostart = () => { webStarted = true; };
+  rec.onspeechstart = () => { if (!webWorked && !speechSeenAt) speechSeenAt = now(); };
   rec.onresult = e => {
     if (me !== rec) return;
+    webWorked = true; speechSeenAt = 0;
     let full = ''; let lastFinal = false;
     for (let i = 0; i < e.results.length; i++) { full += e.results[i][0].transcript + ' '; lastFinal = e.results[i].isFinal; }
     const fresh = full.slice(consumed).trim();
@@ -1207,17 +1274,20 @@ function newSession() {
     if (canBarge(norm(fresh))) bargeIn();
     if (QUICK(norm(fresh))) { consumed = full.length; clearTimeout(finalizeTimer); utterQuick = false; heardPartial(fresh); utterQuick = false; return; }
     clearTimeout(finalizeTimer);
-    const done = () => { if (me !== rec) return; consumed = full.length; heardFinal(fresh); };
-    if (lastFinal) done(); else finalizeTimer = setTimeout(done, 1600);
+    const done = () => { if (me !== rec) return; consumed = full.length; heardFinal(fresh); if (IS_SAFARI || IS_IOS) restartRec(); };
+    if (lastFinal) done(); else finalizeTimer = setTimeout(done, IS_SAFARI || IS_IOS ? 1200 : 1600);
   };
   rec.onerror = e => {
-    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-      micOn = false; listenMode = ''; earState();
-      // the browser's recognizer is not available: use EMO's own one
-      readyEars = false; startVosk().then(earsReady);
-    }
+    // the device's recognizer is not available (no Siri/dictation, no permission, offline): use EMO's own one
+    if (/not-allowed|service-not-allowed|audio-capture|language-not-supported|network/.test(e.error) && !webWorked) fallbackToVosk();
   };
-  rec.onend = () => { if (me === rec && micOn && listenMode === 'web') restartTimer = setTimeout(newSession, 250); };
+  rec.onend = () => {
+    if (me !== rec || !micOn || listenMode !== 'web') return;
+    // ending again and again without ever hearing anything means it doesn't work here
+    const t = now(); webEnds = webEnds.filter(x => t - x < 15000); webEnds.push(t);
+    if (!webWorked && webEnds.length >= 6) return fallbackToVosk();
+    restartTimer = setTimeout(newSession, 250);
+  };
   try { rec.start(); } catch (e) { restartTimer = setTimeout(newSession, 1000); }
 }
 
@@ -1368,6 +1438,7 @@ async function boot() {
   showLoad();
   loadVoice();
   startListening();
+  startMotion();
   if (settings.cam) startCam();
   await wait(1500);
   tryAudio();
@@ -1380,6 +1451,7 @@ function greet() {
 }
 // Browsers only allow sound after the first touch. Any touch, click or key unlocks it once.
 function unlock() {
+  startMotion();
   try { ac(); } catch (e) {}
   if (!micOn) startListening();
   if (!audioOk) {
