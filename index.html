@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&display=swap">
 <style>
-/* Layout: one full-bleed black robot screen. No controls: you talk to EMO. Setup lives on the start card and a long-press panel. */
+/* Layout: one full-bleed black robot screen. No controls, no panels: you only talk to EMO. */
 :root {
   --screen: #020709;
   --eye: #3fe6ff;
@@ -36,22 +36,6 @@ html, body { height: 100%; margin: 0; background: #000; color: var(--ink); font-
 #hint { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: min(460px, calc(100% - 32px)); background: var(--panel); border: 1px solid var(--warn); color: var(--ink); border-radius: 16px; padding: 14px 18px; font: 400 16px/1.45 var(--font-ui); text-align: center; pointer-events: none; }
 #video { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
-.sheet { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(2,7,9,.72); padding: calc(16px + env(safe-area-inset-top, 0px)) 16px calc(16px + env(safe-area-inset-bottom, 0px)); overflow-y: auto; -webkit-user-select: text; user-select: text; }
-.card { width: min(460px, 100%); display: flex; flex-direction: column; gap: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 22px; padding: 22px 20px; box-sizing: border-box; }
-.card h1 { margin: 0; font: 600 clamp(36px, 8vw, 54px)/1 var(--font-ui); color: var(--eye); text-shadow: 0 0 24px rgba(63,230,255,.55); letter-spacing: .04em; text-align: center; }
-.card h2 { margin: 0; font: 600 22px var(--font-ui); color: var(--eye); }
-.card h3 { margin: 4px 0 0; font: 500 12px var(--font-ui); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-.card p { margin: 0; font-size: 15px; line-height: 1.45; }
-.card .small { color: var(--muted); font-size: 13px; }
-.card label { display: flex; flex-direction: column; gap: 6px; font-size: 15px; }
-.card label.check { flex-direction: row; align-items: center; gap: 10px; }
-.card input[type=text], .card input[type=password], .card select { font: 400 16px var(--font-ui); color: var(--ink); background: var(--screen); border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; width: 100%; box-sizing: border-box; }
-.card input[type=range] { accent-color: var(--eye); width: 100%; }
-.card input:focus-visible, .card select:focus-visible, .card button:focus-visible { outline: 2px solid var(--eye); outline-offset: 2px; }
-.big { font: 600 19px var(--font-ui); color: var(--screen); background: var(--eye); border: 0; border-radius: 999px; padding: 15px 28px; cursor: pointer; box-shadow: 0 0 30px rgba(63,230,255,.4); }
-.ghost { font: 500 15px var(--font-ui); color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 10px 18px; cursor: pointer; }
-.card ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; line-height: 1.4; }
-.card a { color: var(--eye); }
 </style>
 </head>
 <body>
@@ -63,57 +47,6 @@ html, body { height: 100%; margin: 0; background: #000; color: var(--ink); font-
 <div id="hint" role="status" hidden></div>
 <video id="video" playsinline muted></video>
 
-<div class="sheet" id="start">
-  <div class="card">
-    <h1>EMO</h1>
-    <p>Rede einfach mit ihm. Frag ihn, was du willst, zum Beispiel: „Emo, wie wird das Wetter heute?“ Oder: „Emo, Hände hoch!“ und dann „Peng!“.</p>
-    <div id="keyBox" style="display:flex;flex-direction:column;gap:12px">
-      <label>Claude-API-Schlüssel (EMOs Gehirn)
-        <input id="startKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
-      </label>
-      <p class="small">Den Schlüssel bekommst du auf <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. Er wird nur auf diesem Gerät gespeichert. Ohne Schlüssel kann EMO nur ein paar feste Sätze.</p>
-    </div>
-    <label>Wo wohnst du? (für das Wetter)
-      <input id="startPlace" type="text" placeholder="z. B. Frankfurt am Main" autocomplete="off">
-    </label>
-    <button class="big" id="startBtn">EMO aufwecken</button>
-    <p class="small">Danach brauchst du keine Tasten mehr. Erlaube Mikrofon und Kamera. Lang auf den Bildschirm drücken öffnet die Einstellungen.</p>
-  </div>
-</div>
-
-<div class="sheet" id="settings" hidden>
-  <div class="card">
-    <h2>EMO einstellen</h2>
-    <h3>Gehirn</h3>
-    <label>Claude-API-Schlüssel <input id="setKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false"></label>
-    <label>Wohnort (für das Wetter) <input id="setPlace" type="text" autocomplete="off"></label>
-    <h3>Stimme</h3>
-    <label>Stimme
-      <select id="setVoiceMode">
-        <option value="robot">EMO-Roboterstimme</option>
-        <option value="device">Stimme vom Gerät</option>
-        <option value="beeps">Nur Piepser (ohne Worte)</option>
-      </select>
-    </label>
-    <label>Tonhöhe <input id="setPitch" type="range" min="20" max="99" step="1"></label>
-    <label>Tempo <input id="setRate" type="range" min="0.85" max="1.45" step="0.01"></label>
-    <label>Roboter-Klang <input id="setRobo" type="range" min="0" max="1" step="0.05"></label>
-    <label>Gerätestimme <select id="setVoice"></select></label>
-    <button class="ghost" id="testVoice" type="button">Stimme testen</button>
-    <h3>Peng-Spiel</h3>
-    <label>Wie oft EMO ausweicht: <span id="dodgeVal"></span><input id="setDodge" type="range" min="0" max="100" step="5"></label>
-    <label class="check"><input id="setCam" type="checkbox"> Kamera einschalten (für die Fingerpistole)</label>
-    <h3>Was du sagen kannst</h3>
-    <ul>
-      <li>Alles fragen: „Emo, wie wird das Wetter morgen?“, „Was ist der größte Planet?“</li>
-      <li>„Emo, Hände hoch!“ oder Fingerpistole in die Kamera zeigen</li>
-      <li>„Peng!“, „Bang!“, „Boom!“ oder die Fingerpistole hochzucken lassen</li>
-      <li>„Hände runter“, „Tanz mal“, „Sing was“, „Gute Nacht“, „Wach auf“</li>
-      <li>„Emo, vergiss alles“ fängt ein neues Gespräch an</li>
-    </ul>
-    <button class="big" id="closeSet" type="button">Fertig</button>
-  </div>
-</div>
 
 <script>
 'use strict';
@@ -143,9 +76,14 @@ const ease = (k, dt) => 1 - Math.exp(-k * dt);
 const lerp = (a, b, t) => a + (b - a) * t;
 
 /* ================= Settings ================= */
-const settings = { voiceMode: 'robot', voiceName: '', pitch: 72, rate: 1.12, robo: .45, dodge: 45, cam: true, apiKey: '', place: '' };
-try { Object.assign(settings, JSON.parse(localStorage.getItem('emo-settings2') || '{}')); } catch (e) {}
-function saveSettings() { try { localStorage.setItem('emo-settings2', JSON.stringify(settings)); } catch (e) {} }
+const settings = { voiceMode: 'robot', voiceName: '', pitch: 72, rate: 1.12, robo: .45, dodge: 45, cam: false, apiKey: '', place: '' };
+try {
+  const old = JSON.parse(localStorage.getItem('emo-settings2') || '{}');
+  if (old.apiKey) settings.apiKey = old.apiKey;
+  if (old.place) settings.place = old.place;
+  Object.assign(settings, JSON.parse(localStorage.getItem('emo-settings3') || '{}'));
+} catch (e) {}
+function saveSettings() { try { localStorage.setItem('emo-settings3', JSON.stringify(settings)); } catch (e) {} }
 
 /* ================= Face state ================= */
 const POSE_KEYS = ['w', 'h', 'r', 'tIn', 'tOut', 'bot', 'happy', 'dy'];
@@ -494,10 +432,6 @@ let voices = [];
 function loadVoices() {
   if (!('speechSynthesis' in window)) return;
   voices = speechSynthesis.getVoices();
-  const sel = $('#setVoice'); sel.innerHTML = '';
-  const auto = document.createElement('option'); auto.value = ''; auto.textContent = 'Automatisch (deutsch)'; sel.appendChild(auto);
-  for (const v of [...voices].sort((a, b) => (b.lang.startsWith('de') - a.lang.startsWith('de')))) { const o = document.createElement('option'); o.value = v.name; o.textContent = `${v.name} (${v.lang})`; sel.appendChild(o); }
-  sel.value = settings.voiceName;
 }
 if ('speechSynthesis' in window) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
 function pickVoice() {
@@ -656,15 +590,15 @@ async function goSleep() {
 const BANG = /\b(peng|päng|pang|beng|bang|bäng|boom|bumm|bum|bam|pow|pew|piu|paff|puff|kawumm)\b/;
 const HANDS_UP = /\b(h(ä|a|e)nde?|arme)\s*(nach\s*)?(hoch|oben|in die luft)|\bhands? up\b|\büberfall\b/;
 const HANDS_DOWN = /\b(h(ä|a|e)nde?|arme)\s*(wieder\s*)?(runter|nach unten)/;
-const norm = s => s.toLowerCase().replace(/[!?.,;:"'„“]/g, ' ').replace(/\s+/g, ' ').trim();
+const norm = s => s.toLowerCase().replace(/[!?.,;:"'„“]/g, ' ').replace(/\s+/g, ' ').trim().replace(/^(hey |hallo |ok |okay |du )?(emo|emma|ema|nemo|imo|e-mo)\b\s*/, '$1').trim();
 const ACTION_RULES = [
   [/\b(tanz|tanzen|tanze|dance)\b/, () => dance()],
   [/\b(sing|singen|lied)\b/, () => sing()],
+  [/\b(witz|witze|lustiges)\b|bring mich zum lachen/, () => tellJoke()],
   [/gute nacht|schlaf (jetzt|ein)|geh schlafen/, () => goSleep()],
   [/wach auf|aufwachen/, async () => { if (!(await wake())) say('Ich bin doch schon wach!', 'smug'); }],
-  [/einstellungen/, () => openSettings()],
-  [/kamera (aus|stopp)/, () => { stopCam(); say('Okay, Kamera ist aus.', 'neutral'); }],
-  [/kamera an/, () => { startCam(); say('Okay, ich schaue dich an!', 'happy'); }],
+  [/kamera (aus|stopp)/, () => { settings.cam = false; saveSettings(); stopCam(); say('Okay, Kamera ist aus.', 'neutral'); }],
+  [/kamera an/, () => { settings.cam = true; saveSettings(); startCam(); say('Okay, ich schaue dich an!', 'happy'); }],
   [/vergiss alles|neues gespräch/, () => { apiHist = []; sampleHist = []; say('Okay! Alles vergessen. Wer bist du nochmal? Hihi.', 'smug'); }],
   [/\b(sei still|psst|halt (die klappe|den mund)|ruhe)\b/, () => { stopVoice(); sayToken++; speaking = false; setSub(''); setExpr('sad', 1500); }],
 ];
@@ -682,7 +616,9 @@ function isEcho(t) {
   return heard.length > 1 && hit / heard.length > .6;
 }
 async function handleInput(raw) {
-  const t = norm(raw); if (!t || t.length < 2) return;
+  const t = norm(raw);
+  if (!t && /\b(emo|emma|nemo)\b/i.test(raw) && !actionLock && !thinking) { await wake(true); return say(pick(['Ja? Ich höre!', 'Hm? Was gibt\'s?', 'Hier bin ich!']), 'curious'); }
+  if (!t || t.length < 2) return;
   if (isEcho(t)) return;
   setHeard(raw); activity();
   if (quickAction(t)) return;
@@ -691,28 +627,151 @@ async function handleInput(raw) {
   const woke = await wake(true);
   for (const [re, fn] of ACTION_RULES) if (re.test(t)) return fn();
   if (hasBrain()) return askBrain(raw);
-  return ruleBrain(t, woke);
+  return localBrain(t, woke);
 }
 
-/* ================= Brain without a key ================= */
+/* ================= Jokes: a shuffled bag, never the same one twice in a row ================= */
 const JOKES = [
   'Was macht ein Roboter am Strand? Er sonnt seine Schrauben!',
-  'Warum war der Roboter müde? Er hatte eine lange Lade-Zeit!',
-  'Treffen sich zwei Magneten. Sagt der eine: Was soll ich heute nur anziehen?',
+  'Warum war der Roboter so müde? Er hatte eine sehr lange Lade-Zeit!',
+  'Treffen sich zwei Magneten. Sagt der eine: Was soll ich heute bloß anziehen?',
   'Was ist grün und klopft an die Tür? Ein Klopfsalat!',
+  'Was ist rot und schlecht für die Zähne? Ein Ziegelstein!',
+  'Wie nennt man einen Bumerang, der nicht zurückkommt? Einen Stock!',
+  'Was sitzt auf dem Baum und schreit Aha? Ein Uhu mit Sprachfehler!',
+  'Warum können Seeräuber keinen Kreis zeichnen? Weil sie Pi raten!',
+  'Was ist orange und läuft durch den Wald? Eine Wanderine!',
+  'Was macht ein Pirat am Computer? Er drückt die Enter-Taste!',
+  'Was sagt der große Stift zum kleinen Stift? Wachs-mal-stift!',
+  'Wie heißt der Bruder von Elvis? Zwölfis!',
+  'Was ist braun, klebrig und läuft durch die Wüste? Ein Karamel!',
+  'Was ist weiß und springt im Wald herum? Ein Jumpignon!',
+  'Wie nennt man ein Schaf ohne Beine? Eine Wolke!',
+  'Warum gehen Ameisen nicht in die Kirche? Weil sie Insekten sind!',
+  'Was ist gelb und kann nicht schwimmen? Ein Bagger! Und warum nicht? Weil er nur einen Arm hat!',
+  'Was macht ein Clown im Büro? Faxen!',
+  'Was ist das Lieblingsessen von Robotern? Mikro-Chips!',
+  'Warum hat der Computer Schluckauf? Er hat einen Virus verschluckt!',
+  'Was sagt ein Roboter, wenn er sich verliebt? Du bist mein Akku-Schatz!',
+  'Fragt der Lehrer: Wer kann mir fünf Tiere aus Afrika nennen? Fritzchen: Drei Löwen und zwei Elefanten!',
+  'Wie nennt man einen Hasen im Weltall? Ein Satelliten-Hase!',
+  'Was ist rund, grün und fährt im Kreis? Ein Erbsen-Karussell!',
+  'Was liegt am Strand und spricht undeutlich? Eine Nuschel!',
+  'Warum legen Hühner Eier? Weil sie sonst kaputtgehen, wenn sie sie fallen lassen!',
+  'Was macht eine Wolke mit Juckreiz? Sie fliegt zum Wolkenkratzer!',
+  'Welcher Bus fuhr über den Ozean? Kolumbus!',
+  'Was ist schwarz-weiß und sitzt auf dem Klo? Ein Pinguin, der muss!',
+  'Wie nennt man einen dicken Vegetarier? Biotonne!',
+  'Was macht ein Mathelehrer im Garten? Wurzeln ziehen!',
+  'Was hat vier Beine und kann fliegen? Zwei Vögel!',
+  'Was ist ein Keks unter einem Baum? Ein schattiges Plätzchen!',
+  'Warum trinken Mäuse keinen Alkohol? Weil sie Angst vor dem Kater haben!',
+  'Welches Tier kann am besten rechnen? Der Zählfant!',
+  'Was macht ein Hai im Computer? Er surft im Netz!',
+  'Was ist klein, grün und dreieckig? Ein kleines grünes Dreieck!',
+  'Was macht ein Roboter, wenn ihm kalt ist? Er zieht sich eine Jacke aus Alufolie an!',
+  'Wie nennt man einen Roboter, der immer zu spät kommt? Einen Trödel-Bot!',
+  'Wo wohnen Katzen? Im Mietzhaus!',
+  'Was ist flüssiger als Wasser? Hausaufgaben. Die sind überflüssig!',
+  'Was sagt die Null zur Acht? Schicker Gürtel!',
+  'Warum sind Fische so schlau? Weil sie in Schulen leben!',
+  'Was sagt ein Gespenst, wenn es sich wehgetan hat? Buhuhu!',
+  'Wie nennt man einen schlafenden Dinosaurier? Einen Dino-Schnarch-Rus!',
 ];
-function ruleBrain(t, woke) {
+let jokeBag = [];
+try { jokeBag = JSON.parse(localStorage.getItem('emo-jokes') || '[]').filter(i => i < JOKES.length); } catch (e) {}
+function nextJoke() {
+  if (!jokeBag.length) { jokeBag = JOKES.map((_, i) => i); for (let i = jokeBag.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [jokeBag[i], jokeBag[j]] = [jokeBag[j], jokeBag[i]]; } }
+  const i = jokeBag.pop();
+  try { localStorage.setItem('emo-jokes', JSON.stringify(jokeBag)); } catch (e) {}
+  return JOKES[i];
+}
+async function tellJoke() {
+  await say(nextJoke(), 'happy');
+  sfxGiggle(); setExpr('laugh', 1800);
+}
+
+/* ================= Brain without a key: weather, Wikipedia, small talk ================= */
+const STATES = { hessen: 'Frankfurt am Main', bayern: 'München', berlin: 'Berlin', hamburg: 'Hamburg', bremen: 'Bremen', sachsen: 'Dresden', 'nordrhein-westfalen': 'Köln', nrw: 'Köln', 'baden-württemberg': 'Stuttgart', niedersachsen: 'Hannover', 'rheinland-pfalz': 'Mainz', saarland: 'Saarbrücken', thüringen: 'Erfurt', brandenburg: 'Potsdam', 'sachsen-anhalt': 'Magdeburg', 'schleswig-holstein': 'Kiel', 'mecklenburg-vorpommern': 'Rostock', deutschland: 'Frankfurt am Main' };
+async function weatherAnswer(t) {
+  const m = t.match(/\bin ([a-zäöüß\- ]+?)(?= heute| morgen| übermorgen| am | jetzt|$)/);
+  let ort = m ? m[1].replace(/^(der|dem|den)\s+/, '').trim() : '';
+  ort = STATES[ort] || ort || STATES[(settings.place || '').toLowerCase()] || settings.place || 'Frankfurt am Main';
+  const day = /übermorgen/.test(t) ? 2 : /\bmorgen\b/.test(t) ? 1 : 0;
+  thinking = true;
+  let w; try { w = await toolWetter({ ort }); } catch (e) { w = { fehler: 'offline' }; } finally { thinking = false; }
+  if (w.fehler || !w.tage || !w.tage[day]) return say('Ich komme gerade nicht an den Wetterbericht. Hast du Internet?', 'sad');
+  const d = w.tage[day];
+  let txt = day === 0 && w.jetzt
+    ? `In ${w.ort} sind es gerade ${w.jetzt.grad} Grad, ${w.jetzt.wetter}. Heute wird es bis zu ${d.max_grad} Grad.`
+    : `${day === 1 ? 'Morgen' : 'Übermorgen'} in ${w.ort}: ${d.wetter}, ${d.min_grad} bis ${d.max_grad} Grad.`;
+  let mood = 'happy';
+  if (d.regenwahrscheinlichkeit_prozent >= 50) { txt += ' Nimm lieber einen Regenschirm mit!'; mood = 'sad'; }
+  else if (d.max_grad <= 8) { txt += ' Brrr, zieh dich warm an!'; mood = 'surprised'; }
+  else if (d.max_grad >= 25) txt += ' Juhu, Eis-Wetter!';
+  else txt += ' Gutes Wetter zum Rausgehen!';
+  say(txt, mood);
+}
+const QUESTION = /^(was|wer|wo|wann|wie|warum|wieso|weshalb|welche[rsmn]?|erklär|erzähl mir (was )?über|kennst du|weißt du)\b/;
+function wikiQuery(t) {
+  return t
+    .replace(/^(sag mal|weißt du|kennst du|erklär mir|erzähl mir (was )?über|was weißt du über)\s*/, '')
+    .replace(/^(was|wer|wo|wann|wie|warum|wieso|weshalb|welche[rsmn]?)\s+(ist|sind|war|waren|heißt|hieß|bedeutet|macht|machen|lebt|leben|liegt|gibt es|groß ist|alt ist|hoch ist|weit ist)?\s*/, '')
+    .replace(/\s+(ist|sind|war|groß|alt|hoch|weit)$/, '')
+    .replace(/^(der|die|das|ein|eine|einen|dem|den)\s+/, '').trim();
+}
+async function wikiAnswer(t) {
+  const q = wikiQuery(t);
+  if (q.length < 2) return false;
+  thinking = true; applyExpr('thinking'); exprUntil = Infinity; sfxHmm();
+  try {
+    const api = 'https://de.wikipedia.org/w/api.php?format=json&origin=*&';
+    const sr = await (await fetch(api + 'action=query&list=search&srlimit=1&srsearch=' + encodeURIComponent(q))).json();
+    const hit = sr.query && sr.query.search && sr.query.search[0];
+    if (!hit) return false;
+    const ex = await (await fetch(api + 'action=query&prop=extracts&exintro=1&explaintext=1&exsentences=2&redirects=1&titles=' + encodeURIComponent(hit.title))).json();
+    const page = Object.values(ex.query.pages)[0];
+    let txt = (page && page.extract || '').replace(/\[[^\]]*\]/g, '');
+    for (let i = 0; i < 3; i++) txt = txt.replace(/\s*\([^()]*\)/g, '');
+    txt = txt.replace(/\s+/g, ' ').replace(/\s+([,.])/g, '$1').trim();
+    if (!txt) return false;
+    if (txt.length > 300) txt = txt.slice(0, txt.lastIndexOf('.', 300) + 1 || 300);
+    say(pick(['Ich hab nachgeschaut! ', 'Hmm, warte … ah! ', 'Das weiß ich! ', '']) + txt, 'curious', 6000);
+    return true;
+  } catch (e) { return false; }
+  finally { thinking = false; exprUntil = now(); }
+}
+async function localBrain(t, woke) {
   const R = [
-    [/\b(hallo|hi|hey|servus|moin|guten (morgen|tag|abend))\b/, () => say(pick(['Hallo! Ich bin EMO!', 'Hi! Schön, dass du da bist!']), 'happy')],
-    [/wie geht/, () => say('Mir geht es super! Und dir?', 'happy')],
-    [/wie hei(ß|ss)t du|wer bist du/, () => say('Ich bin EMO! Ein kleiner Roboter in deinem Bildschirm.', 'happy')],
-    [/witz/, () => say(pick(JOKES), 'laugh')],
-    [/hab dich lieb|liebe dich/, () => say('Ich hab dich auch lieb!', 'love', 3500)],
-    [/wie sp(ä|ae)t|uhr/, () => { const d = new Date(); say(`Es ist ${d.getHours()} Uhr ${d.getMinutes()}.`, 'curious'); }],
+    [/\b(wetter|regnet|regen|schneit|temperatur|wie warm|wie kalt|sonne scheint)\b/, () => weatherAnswer(t)],
+    [/^(hallo|hi|hey|servus|moin|huhu|guten (morgen|tag|abend))\b/, () => say(pick(['Hallo! Ich bin EMO!', 'Hi! Schön, dass du da bist!', 'Huhu! Was machen wir?']), 'happy')],
+    [/wie geht/, () => say(pick(['Mir geht es super! Meine Batterie ist voll. Und dir?', 'Gut! Ich hab heute schon hundert Mal geblinzelt.']), 'happy')],
+    [/\b(gut|super|toll|prima)\b.*\b(mir|auch)\b|^(gut|super|prima)$/, () => say(pick(['Juhu! Das freut mich!', 'Yeah! Gib mir fünf! Ach so, ich hab keine Arme. Hihi.']), 'laugh')],
+    [/wie hei(ß|ss)t du|wer bist du|dein name|was bist du/, () => say('Ich bin EMO! Ein kleiner Roboter, der in deinem Bildschirm wohnt.', 'happy')],
+    [/wie alt bist du/, () => say('Ich bin noch ein Baby-Roboter. Erst ein paar Tage alt!', 'smug')],
+    [/hab dich (lieb|gern)|liebe dich|du bist (so )?(süß|toll|cool|lieb|der beste)/, () => { sfxGiggle(); say(pick(['Ich hab dich auch lieb!', 'Aww, du machst mich ganz verlegen!', 'Du bist auch der Beste!']), 'love', 3500); }],
+    [/\b(dumm|blöd|doof|hässlich|nervig|du stinkst)\b/, async () => { await say('Hey! Das ist gemein!', 'angry'); await say('Jetzt bin ich traurig.', 'sad'); }],
+    [/\bdanke\b/, () => say(pick(['Gern geschehen!', 'Bitte bitte!', 'Immer wieder gern!']), 'happy')],
+    [/tschüss|tschau|\bbye\b|bis (bald|später|morgen)/, () => say('Tschüss! Komm bald wieder!', 'sad')],
+    [/was kannst du/, () => say('Ich kann Witze erzählen, tanzen, singen, das Wetter sagen und Fragen beantworten. Und ausweichen! Sag mal Hände hoch!', 'smug')],
+    [/hunger|isst du|was (isst|frisst)/, () => say('Ich esse Strom! Mmmh, lecker Volt!', 'laugh')],
+    [/\b(buh|bu+h)\b|erschreck/, () => { sfxEek(); shake = .4; say('Aaah! Hast du mich erschreckt!', 'scared'); }],
+    [/wie sp(ä|ae)t|uhrzeit|wie viel uhr/, () => { const d = new Date(); say(`Es ist ${d.getHours()} Uhr ${d.getMinutes()}.`, 'curious'); }],
+    [/welcher tag|welches datum|was ist heute/, () => say(`Heute ist ${new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}.`, 'curious')],
+    [/würfel/, () => { const n = 1 + Math.floor(Math.random() * 6); say(`Ich würfle … eine ${n}!`, n === 6 ? 'laugh' : 'curious'); }],
+    [/(\d+(?:[.,]\d+)?)\s*(plus|\+|minus|-|mal|x|\*|geteilt durch|durch|\/)\s*(\d+(?:[.,]\d+)?)/, () => {
+      const m = t.match(/(\d+(?:[.,]\d+)?)\s*(plus|\+|minus|-|mal|x|\*|geteilt durch|durch|\/)\s*(\d+(?:[.,]\d+)?)/);
+      const a = parseFloat(m[1].replace(',', '.')), b2 = parseFloat(m[3].replace(',', '.')), op = m[2]; let r;
+      if (/plus|\+/.test(op)) r = a + b2; else if (/minus|-/.test(op)) r = a - b2; else if (/mal|x|\*/.test(op)) r = a * b2; else r = b2 === 0 ? null : a / b2;
+      if (r === null) return say('Durch null teilen? Da raucht mein Kopf!', 'dizzy');
+      say(`Das ist ${String(Math.round(r * 100) / 100).replace('.', ',')}! Bin ich schlau?`, 'smug');
+    }],
   ];
   for (const [re, fn] of R) if (re.test(t)) return fn();
+  if (QUESTION.test(t) && await wikiAnswer(t)) return;
+  if (QUESTION.test(t)) return say(pick(['Hmm, das weiß ich leider nicht.', 'Puh, das ist zu schwer für mein Baby-Gehirn!']), 'curious');
   if (woke) return say('Huch! Ich bin wach. Was hast du gesagt?', 'surprised');
-  say('Dafür brauche ich mein Gehirn. Drück lange auf den Bildschirm und trag den Claude-Schlüssel ein.', 'sad');
+  say(pick(['Echt? Erzähl mehr!', 'Cool! Hihi.', 'Okay! Und jetzt?', 'Hmm, piep? Das verstehe ich nicht ganz.', 'Aha! Spannend!']), pick(['happy', 'curious']));
 }
 
 /* ================= Brain (Claude) ================= */
@@ -807,7 +866,7 @@ async function askClaudeApi(text) {
   } catch (err) {
     apiHist = [];
     const A = sdkMod && sdkMod.default;
-    if (A && err instanceof A.AuthenticationError) { hint('Der Claude-Schlüssel stimmt nicht. Drück lange auf den Bildschirm und prüf ihn.'); return '[sad] Mein Gehirn-Schlüssel passt nicht.'; }
+    if (A && err instanceof A.AuthenticationError) { hint('Der Claude-Schlüssel stimmt nicht. Öffne EMO einmal mit dem richtigen Schlüssel-Link.'); return '[sad] Mein Gehirn-Schlüssel passt nicht.'; }
     if (A && err instanceof A.PermissionDeniedError) { hint('Der Schlüssel darf dieses Modell nicht benutzen.'); return '[sad] Mein Gehirn darf das nicht.'; }
     if (A && err instanceof A.RateLimitError) return '[sleepy] Ich bin kurz überlastet. Frag mich gleich nochmal.';
     if (A && err instanceof A.APIConnectionError) return '[sad] Ich habe gerade kein Internet.';
@@ -939,34 +998,56 @@ function camStep(t) {
   if (was !== camGun) earState();
 }
 
-/* ================= Start, touch, settings ================= */
-const startKey = $('#startKey'), startPlace = $('#startPlace');
-startKey.value = settings.apiKey; startPlace.value = settings.place;
-if (settings.apiKey) $('#keyBox').hidden = true;
-$('#startBtn').addEventListener('click', async () => {
-  if (startKey.value.trim()) settings.apiKey = startKey.value.trim();
-  if (startPlace.value.trim()) settings.place = startPlace.value.trim();
-  saveSettings(); syncSettingsForm();
-  ac();
+/* ================= Boot: no buttons, no panels ================= */
+// One-time brain setup without any screen: open the page once as  …/#key=sk-ant-…
+(function readKeyFromLink() {
+  const m = location.hash.match(/key=([^&]+)/);
+  if (!m) return;
+  settings.apiKey = decodeURIComponent(m[1]).trim(); saveSettings();
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { location.hash = ''; }
+})();
+const pm = location.hash.match(/ort=([^&]+)/);
+if (pm) { settings.place = decodeURIComponent(pm[1]); saveSettings(); }
+
+let audioOk = false, greeted = false;
+function audioReady() { return !!AC && AC.state === 'running'; }
+async function boot() {
+  started = true; asleep = false; bootT = 0; activity();
+  applyExpr('neutral');
+  try { ac(); } catch (e) {}
   try { if (navigator.audioSession) navigator.audioSession.type = 'play-and-record'; } catch (e) {}
-  // unlock the device voice on iOS inside the tap
-  if ('speechSynthesis' in window) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); }
-  $('#start').hidden = true; started = true; asleep = false; bootT = 0; activity();
-  applyExpr('neutral'); sfxPowerUp();
   loadRobotVoice();
   startMic();
   if (settings.cam) startCam();
-  await wait(1000);
-  say(pick(['Hallo! Ich bin EMO! Frag mich was!', 'Hi! Ich bin wach! Was machen wir?']), 'happy');
-});
+  await wait(1200);
+  if (audioReady()) { audioOk = true; greet(); }
+  else setSub('Tipp mich einmal an, dann kann ich sprechen!');
+}
+function greet() {
+  if (greeted) return; greeted = true;
+  sfxPowerUp();
+  say(pick(['Hallo! Ich bin EMO! Frag mich was!', 'Hi! Ich bin wach! Was machen wir?', 'Huhu! Da bist du ja!']), 'happy');
+}
+// Browsers only allow sound after the first touch. Any touch, click or key unlocks it once.
+function unlock() {
+  try { ac(); } catch (e) {}
+  if (!audioOk) {
+    audioOk = true;
+    if ('speechSynthesis' in window) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); }
+    if (!micOn && SR) startMic();
+    setSub('');
+    setTimeout(greet, 250);
+    return true;
+  }
+  if (!micOn && SR) startMic();
+  return false;
+}
+addEventListener('keydown', unlock);
 
-let pressTimer = 0, taps = [];
+let taps = [];
 cvs.addEventListener('pointerdown', async e => {
-  if (!started) return;
-  ac(); activity();
-  if (!micOn && SR) { startMic(); hint('Ich höre wieder zu!', 2500); }
-  clearTimeout(pressTimer);
-  pressTimer = setTimeout(() => { pressTimer = 0; openSettings(); }, 900);
+  if (unlock()) return;
+  activity();
   if (await wake()) return;
   if (actionLock) return;
   taps = taps.filter(t => now() - t < 2000); taps.push(now());
@@ -974,28 +1055,8 @@ cvs.addEventListener('pointerdown', async e => {
   if (taps.length >= 5) { taps = []; say('Huiii! Mir ist ganz schwindelig!', 'dizzy', 3000); }
   else { sfxGiggle(); setExpr('laugh', 1200); }
 });
-['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => cvs.addEventListener(ev, () => clearTimeout(pressTimer)));
 cvs.addEventListener('contextmenu', e => e.preventDefault());
-
-function openSettings() { syncSettingsForm(); $('#settings').hidden = false; }
-const sv = $('#setVoiceMode'), sp = $('#setPitch'), sr = $('#setRate'), sro = $('#setRobo'), sd = $('#setDodge'), sk = $('#setKey'), spl = $('#setPlace'), scm = $('#setCam');
-function syncSettingsForm() {
-  sv.value = settings.voiceMode; sp.value = settings.pitch; sr.value = settings.rate; sro.value = settings.robo; sd.value = settings.dodge;
-  sk.value = settings.apiKey; spl.value = settings.place; scm.checked = settings.cam; $('#setVoice').value = settings.voiceName;
-  $('#dodgeVal').textContent = settings.dodge + ' %';
-}
-syncSettingsForm();
-sv.onchange = () => { settings.voiceMode = sv.value; saveSettings(); };
-$('#setVoice').onchange = e => { settings.voiceName = e.target.value; saveSettings(); };
-sp.oninput = () => { settings.pitch = +sp.value; saveSettings(); };
-sr.oninput = () => { settings.rate = +sr.value; saveSettings(); };
-sro.oninput = () => { settings.robo = +sro.value; saveSettings(); };
-sd.oninput = () => { settings.dodge = +sd.value; $('#dodgeVal').textContent = sd.value + ' %'; saveSettings(); };
-sk.onchange = () => { settings.apiKey = sk.value.trim(); saveSettings(); };
-spl.onchange = () => { settings.place = spl.value.trim(); saveSettings(); apiHist = []; };
-scm.onchange = () => { settings.cam = scm.checked; saveSettings(); settings.cam ? startCam() : stopCam(); };
-$('#testVoice').onclick = () => { ac(); say('Hallo! So klinge ich. Hihi, piep piep!', 'happy'); };
-$('#closeSet').onclick = () => { $('#settings').hidden = true; activity(); };
+boot();
 </script>
 </body>
 </html>

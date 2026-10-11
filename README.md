@@ -6,13 +6,18 @@ Ein kleiner Roboter auf dem Bildschirm, inspiriert von EMO. Man sieht nur seine 
 
 **https://wolfiebu-ship-it.github.io/Emo-Go-Home/**
 
-Funktioniert in Safari (iPhone, iPad, Mac) und in Chrome oder Edge.
+Seite öffnen, Mikrofon erlauben, losreden. Es gibt keine Knöpfe und keine Einstellungen. Funktioniert in Safari (iPhone, iPad, Mac) und in Chrome oder Edge.
 
-1. Beim ersten Mal den **Claude-API-Schlüssel** eintragen (von https://console.anthropic.com/settings/keys). Das ist EMOs Gehirn. Er bleibt nur auf deinem Gerät gespeichert.
-2. Wohnort eintragen (für das Wetter).
-3. Einmal auf **„EMO aufwecken“** tippen und Mikrofon und Kamera erlauben. Ab dann einfach reden.
+- Browser spielen erst Ton ab, wenn man die Seite einmal berührt hat. Wenn EMO „Tipp mich einmal an“ sagt, einmal auf sein Gesicht tippen.
+- Am iPhone muss die Diktierfunktion an sein (Einstellungen → Allgemein → Tastatur → Diktierfunktion), und der Stummschalter muss aus sein.
 
-Am iPhone muss die Diktierfunktion an sein (Einstellungen → Allgemein → Tastatur → Diktierfunktion), sonst kann Safari nicht zuhören. Den Stummschalter am iPhone ausmachen, sonst hört man EMO nicht.
+**Ohne Extra** kennt EMO Witze (immer andere), das Wetter, Uhrzeit, Rechnen und schlägt Wissensfragen bei Wikipedia nach.
+
+**Mit Claude-Gehirn** redet er über alles und sucht im Internet. Dafür EMO einmal mit diesem Link öffnen (Schlüssel von https://console.anthropic.com/settings/keys):
+
+`https://wolfiebu-ship-it.github.io/Emo-Go-Home/#key=DEIN-SCHLÜSSEL`
+
+Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse entfernt. Mit `#ort=Kassel` kann man den Wohnort für das Wetter ändern (Standard: Frankfurt am Main).
 
 ## Was man sagen kann
 
@@ -22,20 +27,20 @@ Am iPhone muss die Diktierfunktion an sein (Einstellungen → Allgemein → Tast
 | „Emo, Hände hoch!“ oder Fingerpistole in die Kamera zeigen | hebt sofort ängstlich die Hände |
 | „Peng!“, „Bang!“, „Boom!“ oder Fingerpistole hochzucken lassen | wird ins Auge getroffen (Riss, X-Augen, kippt um) oder weicht aus („Daneben!“) |
 | „Hände runter“ | nimmt die Hände runter |
+| „Erzähl einen Witz“ | erzählt jedes Mal einen anderen Witz |
 | „Tanz mal“, „Sing was“ | tanzt oder singt |
 | „Gute Nacht“ / „Wach auf“ | schläft ein / wacht auf |
 | „Sei still“ | hört auf zu reden |
 | „Vergiss alles“ | fängt ein neues Gespräch an |
 | „Kamera aus“ / „Kamera an“ | schaltet die Fingerpistolen-Erkennung aus oder an |
-| „Einstellungen“ oder lange auf den Bildschirm drücken | öffnet die Einstellungen |
 
 ## Stimme
 
-EMO hat eine eigene Roboter-Kinderstimme. Sie wird direkt im Browser erzeugt (eSpeak, Datei `voice/mespeak-de.js`) und mit Roboter-Effekten verfremdet. In den Einstellungen kann man Tonhöhe, Tempo und Roboter-Klang einstellen oder auf die Gerätestimme oder „nur Piepser“ umschalten.
+EMO hat eine eigene Roboter-Kinderstimme. Sie wird direkt im Browser erzeugt (eSpeak, Datei `voice/mespeak-de.js`) und mit Roboter-Effekten verfremdet.
 
 ## Technik
 
 - `index.html` – alles: Gesicht, Animationen, Zuhören, Gehirn, Kamera
 - `voice/` – Sprachausgabe (meSpeak/eSpeak, GPL-3.0, siehe `voice/LICENSE.md`)
-- Gehirn: Claude (Anthropic API) mit Websuche und einem Wetter-Werkzeug (Open-Meteo)
+- Gehirn: ohne Schlüssel eigene Regeln, Wetter (Open-Meteo) und Wikipedia; mit Schlüssel Claude (Anthropic API) mit Websuche und Wetter-Werkzeug
 - Fingerpistole: MediaPipe Hand-Erkennung, die Kamerabilder bleiben auf dem Gerät
