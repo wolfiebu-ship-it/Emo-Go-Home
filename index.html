@@ -64,7 +64,7 @@ function resize() {
   W = innerWidth; H = innerHeight;
   for (const c of [cvs, off]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
   glow.width = Math.max(1, Math.round(W / 4)); glow.height = Math.max(1, Math.round(H / 4));
-  S = Math.min(W / 1.75, H * 0.9);
+  S = Math.min(W / 2.2, H * 0.55);
 }
 addEventListener('resize', resize); resize();
 
@@ -76,7 +76,7 @@ const ease = (k, dt) => 1 - Math.exp(-k * dt);
 const lerp = (a, b, t) => a + (b - a) * t;
 
 /* ================= Settings ================= */
-const settings = { voiceMode: 'robot', voiceName: '', pitch: 72, rate: 1.12, robo: .45, dodge: 45, cam: false, apiKey: '', place: '' };
+const settings = { voiceMode: 'child', voiceName: '', pitch: 72, rate: 1.12, dodge: 45, cam: false, apiKey: '', place: '' };
 try {
   const old = JSON.parse(localStorage.getItem('emo-settings2') || '{}');
   if (old.apiKey) settings.apiKey = old.apiKey;
@@ -377,56 +377,87 @@ let lastSnore = 0;
 function sfxSnore() { if (!AC || now() - lastSnore < 2600) return; lastSnore = now(); const t = AC.currentTime; tone(160, 110, t, .9, 'triangle', .035); noise(t, .9, 500, .05); }
 function melody(notes, step = .16) { const a = ac(); let t = a.currentTime + .03; for (const n of notes) { if (n) tone(n, n * 1.01, t, step * .9, 'square', .06); t += step; } return (t - a.currentTime) * 1000; }
 
-/* ================= EMO voice (eSpeak + robot effects) ================= */
-let msLoading = null, voiceAnalyser = null, currentVoiceSrc = null, deviceVoiceActive = false;
-function loadRobotVoice() {
-  if (window.meSpeak) return Promise.resolve(true);
-  if (!msLoading) msLoading = new Promise(res => {
-    const s = document.createElement('script'); s.src = 'voice/mespeak-de.js';
-    s.onload = () => res(!!window.meSpeak); s.onerror = () => res(false);
-    document.head.appendChild(s);
-  });
-  return msLoading;
+/* ================= EMO voice: natural neural voice (Piper), shifted up to a child's voice ================= */
+// The voice model speaks slower (length) and is played back faster (shift): pitch and formants rise like a child's, the tempo stays natural.
+const CHILD = { shift: 1.27, length: 1.16 };
+let voiceAnalyser = null, currentVoiceSrc = null, deviceVoiceActive = false;
+let piper = null, piperLoading = null;
+function loadScript(src) {
+  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
 }
-const MOOD_VOICE = { happy: 8, laugh: 12, love: 6, sad: -14, scared: 14, angry: -8, surprised: 14, sleepy: -18, pain: 4, smug: 2, curious: 6 };
+function loadVoice() {
+  if (!piperLoading) piperLoading = (async () => {
+    await loadScript('voice/ort.min.js');
+    await loadScript('voice/piper_phonemize.js');
+    ort.env.wasm.numThreads = 1;
+    ort.env.wasm.proxy = true;
+    ort.env.wasm.wasmPaths = new URL('voice/', location.href).href;
+    const cfg = await (await fetch('voice/de-eva_k-x-low.onnx.json')).json();
+    const sess = await ort.InferenceSession.create('voice/de-eva_k-x-low.onnx', { executionProviders: ['wasm'] });
+    let ids = null;
+    const phon = await createPiperPhonemize({
+      print: line => {
+        try {
+          const M = cfg.phoneme_id_map, out = [1, 0];
+          for (const ph of JSON.parse(line).phonemes) if (M[ph]) out.push(...M[ph], 0);
+          out.push(2); ids = (ids || []).concat(out);
+        } catch (e) {}
+      },
+      printErr: () => {}, locateFile: f => 'voice/' + f,
+    });
+    piper = {
+      cfg, sess,
+      ids(text) { ids = null; phon.callMain(['-l', cfg.espeak.voice, '--input', JSON.stringify([{ text }]), '--espeak_data', '/espeak-ng-data']); return ids; },
+    };
+    return true;
+  })().catch(e => { console.warn('voice failed', e); return false; });
+  return piperLoading;
+}
 function prepSpeech(text) {
   return text.replace(/\bEMO\b/g, 'Emo').replace(/[*_#`~|<>\[\]]/g, ' ').replace(/(\d)\.(\d)/g, '$1,$2').replace(/\s+/g, ' ').trim();
 }
-function decode(buf) { const a = ac(); return new Promise((res, rej) => a.decodeAudioData(buf, res, rej)); }
-async function speakRobot(text, mood) {
-  if (!(await loadRobotVoice())) return speakDevice(text);
-  const raw = window.meSpeak.speak(prepSpeech(text), {
-    rawdata: true, variant: 'emo', amplitude: 120, wordgap: 0,
-    pitch: Math.max(0, Math.min(99, settings.pitch + (MOOD_VOICE[mood] || 0))), speed: 165,
+async function synthChild(text) {
+  const ids = piper.ids(prepSpeech(text));
+  if (!ids || ids.length < 4) return null;
+  const c = piper.cfg.inference;
+  const out = await piper.sess.run({
+    input: new ort.Tensor('int64', BigInt64Array.from(ids.map(BigInt)), [1, ids.length]),
+    input_lengths: new ort.Tensor('int64', BigInt64Array.from([BigInt(ids.length)]), [1]),
+    scales: new ort.Tensor('float32', Float32Array.from([c.noise_scale, c.length_scale * CHILD.length, c.noise_w]), [3]),
   });
-  if (!raw) return speakDevice(text);
-  let buffer; try { buffer = await decode(raw); } catch (e) { return speakDevice(text); }
-  const a = ac(), t = a.currentTime + .02;
-  const src = a.createBufferSource(); src.buffer = buffer; src.playbackRate.value = settings.rate;
-  const hp = a.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 220;
-  const pk = a.createBiquadFilter(); pk.type = 'peaking'; pk.frequency.value = 3000; pk.gain.value = 5; pk.Q.value = .8;
-  const out = a.createGain(); out.gain.value = 1.6;
-  const dry = a.createGain(); dry.gain.value = 1 - settings.robo * .45;
-  // ring modulation gives the metallic robot buzz
-  const ring = a.createGain(); ring.gain.value = 0;
-  const carrier = a.createOscillator(); carrier.type = 'sine'; carrier.frequency.value = 52;
-  const depth = a.createGain(); depth.gain.value = 1; carrier.connect(depth); depth.connect(ring.gain);
-  const ringOut = a.createGain(); ringOut.gain.value = settings.robo * .9;
-  // short comb delay for a tinny "inside a little speaker" sound
-  const comb = a.createDelay(.05); comb.delayTime.value = .0045;
-  const combOut = a.createGain(); combOut.gain.value = settings.robo * .55;
-  src.connect(hp); hp.connect(pk);
-  pk.connect(dry); dry.connect(out);
-  pk.connect(ring); ring.connect(ringOut); ringOut.connect(out);
-  pk.connect(comb); comb.connect(combOut); combOut.connect(out);
+  return out.output.data;
+}
+function playPcm(pcm, rate) {
+  const a = ac();
+  let buf;
+  try { buf = a.createBuffer(1, pcm.length, rate); buf.copyToChannel(pcm, 0); }
+  catch (e) {
+    // old browsers refuse low sample rates: resample to the context rate
+    const k = a.sampleRate / rate, n = Math.floor(pcm.length * k); buf = a.createBuffer(1, n, a.sampleRate); const d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) { const x = i / k, j = Math.floor(x), f = x - j; d[i] = (pcm[j] || 0) * (1 - f) + (pcm[j + 1] || 0) * f; }
+  }
+  const src = a.createBufferSource(); src.buffer = buf; src.playbackRate.value = CHILD.shift;
+  const hp = a.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 140;
+  const air = a.createBiquadFilter(); air.type = 'highshelf'; air.frequency.value = 4500; air.gain.value = 3;
+  const out = a.createGain(); out.gain.value = 1.5;
+  src.connect(hp); hp.connect(air); air.connect(out);
   if (!voiceAnalyser) { voiceAnalyser = a.createAnalyser(); voiceAnalyser.fftSize = 512; voiceAnalyser.connect(master); }
   out.connect(voiceAnalyser);
-  currentVoiceSrc = src;
-  src.start(t); carrier.start(t);
-  const dur = buffer.duration / settings.rate;
-  carrier.stop(t + dur + .1);
-  await new Promise(res => { src.onended = res; setTimeout(res, dur * 1000 + 600); });
-  if (currentVoiceSrc === src) currentVoiceSrc = null;
+  currentVoiceSrc = src; src.start();
+  const dur = buf.duration / CHILD.shift;
+  return new Promise(res => { src.onended = res; setTimeout(res, dur * 1000 + 400); }).then(() => { if (currentVoiceSrc === src) currentVoiceSrc = null; });
+}
+async function speakChild(text, my) {
+  if (!(await loadVoice())) return speakDevice(text);
+  const parts = (text.match(/[^.!?…]+[.!?…]*/g) || [text]).map(t => t.trim()).filter(Boolean);
+  const rate = piper.cfg.audio.sample_rate;
+  let next = synthChild(parts[0]);
+  for (let i = 0; i < parts.length; i++) {
+    const pcm = await next.catch(() => null);
+    if (i + 1 < parts.length) next = synthChild(parts[i + 1]);
+    if (my !== sayToken) return;
+    if (pcm) await playPcm(pcm, rate);
+  }
 }
 let voices = [];
 function loadVoices() {
@@ -467,9 +498,10 @@ async function say(text, expr = 'happy', holdMs) {
   try {
     if (settings.voiceMode === 'beeps') { await wait(babble(Math.max(2, Math.min(16, Math.round(text.length / 4))), expr)); }
     else {
-      if (text.length < 60 || Math.random() < .4) await wait(babble(Math.random() < .5 ? 1 : 2, expr));
+      if (!piper) { await wait(babble(Math.max(2, Math.min(12, Math.round(text.length / 5))), expr)); if (my === sayToken) await wait(1200); return; }
+      if (Math.random() < .35) await wait(babble(1, expr));
       if (my !== sayToken) return;
-      if (settings.voiceMode === 'device') await speakDevice(text); else await speakRobot(text, expr);
+      if (settings.voiceMode === 'device') await speakDevice(text); else await speakChild(text, my);
     }
   } finally {
     if (my === sayToken) { speaking = false; lastSaidEnd = now(); clearTimeout(subTimer); subTimer = setTimeout(() => setSub(''), 4000); }
@@ -902,16 +934,48 @@ async function askBrain(text) {
 }
 
 /* ================= Listening ================= */
+// Chrome/Edge: the browser's own speech recognition.
+// Safari/iPhone: EMO's own offline recognizer (Vosk). It only needs Apple's normal microphone prompt, no Siri or dictation settings.
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let rec = null, micOn = false, consumed = 0, finalizeTimer = 0, restartTimer = 0;
-function startMic() {
-  if (!SR) { hint('Dieser Browser kann leider nicht zuhören. Nimm Safari oder Chrome.'); return; }
+const IS_IOS = /iPhone|iPad|iPod/.test(UA) || (/Macintosh/.test(UA) && navigator.maxTouchPoints > 1);
+const USE_VOSK = IS_SAFARI || IS_IOS || !SR;
+let rec = null, micOn = false, listenMode = '', consumed = 0, finalizeTimer = 0, restartTimer = 0;
+const QUICK = t => HANDS_UP.test(t) || BANG.test(t) || HANDS_DOWN.test(t);
+
+// shared by both recognizers
+let utterQuick = false;
+function heardPartial(txt) {
+  const t = norm(txt || '');
+  if (!t || utterQuick || !QUICK(t) || isEcho(t)) return;
+  utterQuick = true; setHeard(txt); activity(); quickAction(t);
+}
+function heardFinal(txt) {
+  const was = utterQuick; utterQuick = false;
+  txt = (txt || '').replace(/\[unk\]/g, '').trim();
+  if (!txt || was) return;
+  // don't let EMO hear (and interrupt) himself
+  if (listenMode === 'vosk' && (speaking || now() - lastSaidEnd < 900)) return;
+  const t = norm(txt);
+  // with hands up, any short shout counts as "Peng"
+  if (hands.target > .5 && !actionLock && t.split(' ').length <= 2 && t.length <= 9 && !isEcho(t)) { setHeard(txt); return bang(); }
+  handleInput(txt);
+}
+
+function startListening() {
   if (micOn) return;
-  micOn = true; newSession(); earState();
+  if (USE_VOSK) startVosk().then(ok => { if (!ok && SR && !IS_IOS) startMic(); });
+  else startMic();
+}
+
+/* --- Web Speech API --- */
+function startMic() {
+  if (!SR) return;
+  if (micOn) return;
+  micOn = true; listenMode = 'web'; newSession(); earState();
 }
 function newSession() {
   clearTimeout(restartTimer);
-  if (!micOn) return;
+  if (!micOn || listenMode !== 'web') return;
   consumed = 0;
   rec = new SR(); rec.lang = 'de-DE'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
   const me = rec;
@@ -921,26 +985,68 @@ function newSession() {
     for (let i = 0; i < e.results.length; i++) { full += e.results[i][0].transcript + ' '; lastFinal = e.results[i].isFinal; }
     const fresh = full.slice(consumed).trim();
     if (!fresh) return;
-    const t = norm(fresh);
-    // react to "hands up" and "bang" right away, even before the sentence is finished
-    if (HANDS_UP.test(t) || BANG.test(t) || HANDS_DOWN.test(t)) {
-      if (!isEcho(t)) { consumed = full.length; clearTimeout(finalizeTimer); setHeard(fresh); activity(); quickAction(t); }
-      return;
-    }
+    if (QUICK(norm(fresh))) { consumed = full.length; clearTimeout(finalizeTimer); utterQuick = false; heardPartial(fresh); utterQuick = false; return; }
     clearTimeout(finalizeTimer);
-    const done = () => { if (me !== rec) return; consumed = full.length; handleInput(fresh); if (IS_SAFARI) restartRec(); };
-    if (lastFinal) done(); else finalizeTimer = setTimeout(done, IS_SAFARI ? 1100 : 1600);
+    const done = () => { if (me !== rec) return; consumed = full.length; heardFinal(fresh); };
+    if (lastFinal) done(); else finalizeTimer = setTimeout(done, 1600);
   };
   rec.onerror = e => {
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-      micOn = false; earState();
-      hint(IS_SAFARI ? 'EMO darf nicht zuhören. Erlaube das Mikrofon und schalte am iPhone unter Einstellungen → Allgemein → Tastatur die Diktierfunktion ein. Dann tipp auf EMO.' : 'EMO darf das Mikrofon nicht benutzen. Erlaube es in der Adressleiste und tipp dann auf EMO.', 12000);
+      micOn = false; listenMode = ''; earState();
+      // the browser's recognizer is not available: use EMO's own one
+      startVosk();
     }
   };
-  rec.onend = () => { if (me === rec && micOn) restartTimer = setTimeout(newSession, 250); };
+  rec.onend = () => { if (me === rec && micOn && listenMode === 'web') restartTimer = setTimeout(newSession, 250); };
   try { rec.start(); } catch (e) { restartTimer = setTimeout(newSession, 1000); }
 }
-function restartRec() { const r = rec; rec = null; try { r && r.abort(); } catch (e) {} restartTimer = setTimeout(newSession, 200); }
+
+/* --- Vosk (offline, in the page) --- */
+let micStream = null, voskModel = null, voskRec = null, micProc = null, loudAvg = .02, lastLoud = 0, voskLoading = false;
+async function startVosk() {
+  if (listenMode === 'vosk' || voskLoading) return true;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return false;
+  voskLoading = true;
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+  } catch (e) {
+    voskLoading = false;
+    hint('EMO kann dich nicht hören. Lade die Seite neu und tippe bei der Mikrofon-Frage auf „Erlauben“.', 12000);
+    return false;
+  }
+  micOn = true; listenMode = 'vosk'; earState();
+  tryAudio();
+  try {
+    await loadScript('listen/vosk.js');
+    voskModel = await Vosk.createModel('listen/vosk-model-small-de.tar.gz');
+    const a = ac();
+    voskRec = new voskModel.KaldiRecognizer(a.sampleRate);
+    voskRec.on('partialresult', m => heardPartial(m.result.partial));
+    voskRec.on('result', m => heardFinal(m.result.text));
+    const srcNode = a.createMediaStreamSource(micStream);
+    micProc = a.createScriptProcessor(4096, 1, 1);
+    const sink = a.createGain(); sink.gain.value = 0;
+    micProc.onaudioprocess = ev => {
+      const d = ev.inputBuffer.getChannelData(0);
+      loudCheck(d);
+      try { voskRec.acceptWaveformFloat(new Float32Array(d), a.sampleRate); } catch (e) {}
+    };
+    srcNode.connect(micProc); micProc.connect(sink); sink.connect(a.destination);
+    voskLoading = false; earState();
+    return true;
+  } catch (e) {
+    console.warn('vosk failed', e); voskLoading = false; micOn = false; listenMode = ''; earState();
+    return false;
+  }
+}
+// a loud bang ("PENG!", a clap) while the hands are up counts as a shot
+function loudCheck(d) {
+  let s = 0; for (let i = 0; i < d.length; i++) s += d[i] * d[i];
+  const rms = Math.sqrt(s / d.length), t = now();
+  const spike = rms > .32 && rms > loudAvg * 6;
+  loudAvg = loudAvg * .95 + rms * .05;
+  if (spike && hands.target > .5 && hands.t > .7 && !speaking && !actionLock && t - lastLoud > 1500) { lastLoud = t; bang(); }
+}
 
 /* ================= Camera: finger-gun detection ================= */
 const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
@@ -1011,35 +1117,41 @@ if (pm) { settings.place = decodeURIComponent(pm[1]); saveSettings(); }
 
 let audioOk = false, greeted = false;
 function audioReady() { return !!AC && AC.state === 'running'; }
+// Safari lets a page play sound once it is using the microphone; other browsers wait for the first touch.
+function tryAudio() {
+  try { ac(); AC.resume().then(() => { if (audioReady() && !audioOk) { audioOk = true; setSub(''); greet(); } }).catch(() => {}); } catch (e) {}
+}
 async function boot() {
   started = true; asleep = false; bootT = 0; activity();
   applyExpr('neutral');
   try { ac(); } catch (e) {}
   try { if (navigator.audioSession) navigator.audioSession.type = 'play-and-record'; } catch (e) {}
-  loadRobotVoice();
-  startMic();
+  loadVoice();
+  startListening();
   if (settings.cam) startCam();
-  await wait(1200);
+  await wait(1500);
+  tryAudio();
+  await wait(300);
   if (audioReady()) { audioOk = true; greet(); }
-  else setSub('Tipp mich einmal an, dann kann ich sprechen!');
+  else if (!audioOk) setSub('Tipp mich einmal an, dann kann ich sprechen!');
 }
-function greet() {
+async function greet() {
   if (greeted) return; greeted = true;
   sfxPowerUp();
-  say(pick(['Hallo! Ich bin EMO! Frag mich was!', 'Hi! Ich bin wach! Was machen wir?', 'Huhu! Da bist du ja!']), 'happy');
+  await loadVoice();
+  say(pick(['Hallo! Ich bin Emo! Frag mich was!', 'Hi! Ich bin wach! Was machen wir?', 'Huhu! Da bist du ja!']), 'happy');
 }
 // Browsers only allow sound after the first touch. Any touch, click or key unlocks it once.
 function unlock() {
   try { ac(); } catch (e) {}
+  if (!micOn) startListening();
   if (!audioOk) {
     audioOk = true;
     if ('speechSynthesis' in window) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); }
-    if (!micOn && SR) startMic();
     setSub('');
     setTimeout(greet, 250);
     return true;
   }
-  if (!micOn && SR) startMic();
   return false;
 }
 addEventListener('keydown', unlock);
