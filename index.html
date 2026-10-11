@@ -115,6 +115,8 @@ let blinkPhase = -1, nextBlink = now() + 2500;
 let nextSaccade = now() + 1500;
 let exprName = 'neutral', exprUntil = Infinity;
 let shake = 0, flash = 0;
+// slow motion, glitch and after-images for the "Peng" scenes
+let timeScale = 1, timeTarget = 1, glitch = 0, trail = [], lastTrail = 0, sweat = null;
 let bullets = [], screenCracks = [], sparks = [];
 let thinking = false, speaking = false, talkLevel = 0;
 let actionLock = false;
@@ -166,6 +168,7 @@ function makeCrackLines(radius, n) {
 function strokeLines(g, lines) { for (const l of lines) { g.beginPath(); l.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.stroke(); } }
 
 function drawEye(g, cx, cy, side, e, t) {
+  if (e.flicker > .05 && Math.random() < e.flicker * .55) return;
   const p = e.cur;
   const blink = blinkPhase >= 0 ? Math.sin(blinkPhase * Math.PI) : 0;
   const talk = 1 + talkLevel * .16;
@@ -229,7 +232,27 @@ function render(t) {
   g.save();
   g.translate(W / 2 + face.x * S + sx, H * FACE_Y + face.y * S + sy); g.rotate(face.rot); g.scale(face.sc, face.sc);
   const gx = gaze.x * .085 * S, gy = gaze.y * .075 * S;
+  // slow-motion after-images
+  if (trail.length) {
+    g.save(); g.setTransform(DPR, 0, 0, DPR, 0, 0);
+    trail.forEach((tr, k) => {
+      g.save(); g.globalAlpha = .08 + .22 * (k / trail.length);
+      g.translate(W / 2 + tr.x * S, H * FACE_Y + tr.y * S); g.rotate(tr.rot); g.scale(tr.sc, tr.sc);
+      for (let i = 0; i < 2; i++) { const side = i ? 1 : -1; drawEye(g, side * .27 * S + gx, gy - .02 * S, side, eyes[i], t); }
+      g.restore();
+    });
+    g.restore(); g.globalAlpha = 1;
+  }
   for (let i = 0; i < 2; i++) { const side = i ? 1 : -1; drawEye(g, side * .27 * S + gx, gy - .02 * S, side, eyes[i], t); }
+  if (sweat) {
+    const k = (now() - sweat.t0) / 1400;
+    if (k > 1) sweat = null;
+    else {
+      g.save(); g.globalAlpha = 1 - k * k; g.fillStyle = '#bff6ff';
+      g.translate(sweat.side * .27 * S + sweat.side * .16 * S + gx, -.2 * S + k * .22 * S);
+      g.beginPath(); g.moveTo(0, -S * .03); g.quadraticCurveTo(S * .022, 0, 0, S * .018); g.quadraticCurveTo(-S * .022, 0, 0, -S * .03); g.fill(); g.restore();
+    }
+  }
   if (hands.t > .01) {
     const downY = H * (1 - FACE_Y) / face.sc + .3 * S, upY = -.02 * S;
     const y = lerp(downY, upY, hands.t);
@@ -259,6 +282,11 @@ function render(t) {
     const grad = g.createLinearGradient(tx, ty, x, y); grad.addColorStop(0, 'rgba(255,220,140,0)'); grad.addColorStop(1, 'rgba(255,230,170,.9)');
     g.strokeStyle = grad; g.lineWidth = r * 1.2; g.lineCap = 'round'; g.beginPath(); g.moveTo(tx, ty); g.lineTo(x, y); g.stroke();
     g.fillStyle = '#fff3d6'; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    if (timeScale < .7) {
+      // shock-wave rings around the bullet in slow motion
+      for (let q = 0; q < 3; q++) { const ph = ((t / 380) + q / 3) % 1; g.globalAlpha = (1 - ph) * .45 * (1 - timeScale); g.strokeStyle = '#ffffff'; g.lineWidth = 1.5; g.beginPath(); g.arc(tx, ty, r * (1.5 + ph * 5), 0, Math.PI * 2); g.stroke(); }
+      g.globalAlpha = 1;
+    }
   }
   for (const s of sparks) { g.globalAlpha = Math.max(0, s.life); g.fillStyle = s.c; g.beginPath(); g.arc(s.x, s.y, s.r, 0, Math.PI * 2); g.fill(); }
   g.globalAlpha = 1;
@@ -270,6 +298,20 @@ function render(t) {
   gctx.drawImage(off, 0, 0, glow.width, glow.height);
   ctx.globalAlpha = .85; ctx.drawImage(glow, 0, 0, cvs.width, cvs.height); ctx.globalAlpha = 1;
   ctx.drawImage(off, 0, 0);
+  if (timeScale < .97) {
+    // slow motion: darker edges and a cold tint
+    const a = 1 - timeScale, vg = ctx.createRadialGradient(cvs.width / 2, cvs.height * FACE_Y, cvs.height * .2, cvs.width / 2, cvs.height * FACE_Y, Math.max(cvs.width, cvs.height) * .75);
+    vg.addColorStop(0, 'rgba(0,10,30,0)'); vg.addColorStop(1, `rgba(0,10,30,${.75 * a})`);
+    ctx.fillStyle = vg; ctx.fillRect(0, 0, cvs.width, cvs.height);
+  }
+  if (glitch > .03) {
+    // broken-screen glitch: shifted slices
+    for (let k = 0; k < 7; k++) {
+      const y = Math.random() * cvs.height, h = Math.random() * cvs.height * .07 + 2, dx = (Math.random() - .5) * 90 * glitch * DPR;
+      ctx.drawImage(cvs, 0, y, cvs.width, h, dx, y, cvs.width, h);
+    }
+    if (Math.random() < glitch * .5) { ctx.fillStyle = `rgba(255,60,90,${.12 * glitch})`; ctx.fillRect(0, Math.random() * cvs.height, cvs.width, Math.random() * 30 * DPR); }
+  }
   if (flash > .01) { ctx.fillStyle = `rgba(255,248,225,${flash * .8})`; ctx.fillRect(0, 0, cvs.width, cvs.height); }
 }
 
@@ -277,11 +319,18 @@ function render(t) {
 let levelBuf = null;
 function update(dt, t) {
   if (bootT < 1 && started) bootT = Math.min(1, bootT + dt * 1.6);
+  const realDt = dt;
+  timeScale += (timeTarget - timeScale) * ease(10, realDt);
+  dt *= timeScale; // everything below moves in (possibly slow-motion) game time
   for (const e of eyes) for (const k of POSE_KEYS) e.cur[k] += (e.tgt[k] - e.cur[k]) * ease(13, dt);
   gaze.x += (gaze.tx - gaze.x) * ease(11, dt); gaze.y += (gaze.ty - gaze.y) * ease(11, dt);
   face.x += (face.tx - face.x) * ease(face.k, dt); face.y += (face.ty - face.y) * ease(face.k, dt);
   face.rot += (face.trot - face.rot) * ease(face.k, dt); face.sc += (face.tsc - face.sc) * ease(face.k, dt);
   hands.v += (hands.target - hands.t) * 140 * dt; hands.v *= Math.exp(-9 * dt); hands.t += hands.v * dt;
+  if (timeScale < .6 && t - lastTrail > 45) { lastTrail = t; trail.push({ x: face.x, y: face.y, rot: face.rot, sc: face.sc }); if (trail.length > 7) trail.shift(); }
+  else if (timeScale > .9 && trail.length && t - lastTrail > 40) { lastTrail = t; trail.shift(); }
+  glitch *= Math.exp(-2.5 * realDt);
+  for (const e of eyes) if (e.flicker) e.flicker = Math.max(0, e.flicker - realDt * .25);
 
   // eyes bounce with the voice
   let lvl = 0;
@@ -294,7 +343,7 @@ function update(dt, t) {
   if (speaking && deviceVoiceActive) lvl = .35 + Math.sin(t / 70) * .3;
   talkLevel += (lvl - talkLevel) * ease(20, dt);
 
-  if (blinkPhase >= 0) { blinkPhase += dt / .16; if (blinkPhase >= 1) blinkPhase = -1; }
+  if (blinkPhase >= 0) { blinkPhase += realDt / .16; if (blinkPhase >= 1) blinkPhase = -1; }
   else if (t > nextBlink && !asleep) { blinkPhase = 0; nextBlink = t + rand(1800, 5500) * (Math.random() < .15 ? .1 : 1); }
 
   if (t > nextSaccade && !actionLock) {
@@ -312,7 +361,7 @@ function update(dt, t) {
 
   if (hands.target > .5 && !actionLock && !speaking && t - hands.since > 15000) { hands.since = t + 1e9; lowerHands(); }
 
-  shake *= Math.exp(-7 * dt); flash *= Math.exp(-9 * dt);
+  shake *= Math.exp(-7 * realDt); flash *= Math.exp(-9 * realDt);
   for (const b of bullets) { b.p += dt * 1000 / b.dur; if (b.p >= 1 && !b.done) { b.done = true; b.onHit && b.onHit(); } }
   bullets = bullets.filter(b => b.p < 1.05);
   for (const c of screenCracks) if (t > c.fadeAt) c.alpha -= dt * .8;
@@ -367,6 +416,9 @@ function babble(syllables, mood) {
 }
 function sfxBang() { const a = ac(), t = a.currentTime; noise(t, .35, 2400, 1.1, 'lowpass', 200); tone(160, 40, t, .25, 'sine', .5); }
 function sfxCrack() { const a = ac(), t = a.currentTime; for (let i = 0; i < 6; i++) noise(t + i * .018, .05, 5000, .35, 'highpass'); tone(2400, 300, t, .12, 'sawtooth', .05); }
+function sfxSlowmo() { const a = ac(), t = a.currentTime; tone(150, 42, t, 1.7, 'sine', .45); noise(t, 1.6, 300, .35, 'lowpass', 80); tone(60, 50, t + .45, .18, 'sine', .5); tone(60, 50, t + .75, .18, 'sine', .45); tone(60, 50, t + 1.3, .18, 'sine', .4); }
+function sfxGlitch() { const a = ac(), t = a.currentTime; for (let i = 0; i < 9; i++) { noise(t + i * .045, .035, rand(800, 6000), .3, 'bandpass'); if (i % 2) tone(rand(200, 1800), rand(100, 900), t + i * .045, .03, 'square', .05); } }
+function sfxRicochet() { const a = ac(), t = a.currentTime; tone(2600, 500, t, .45, 'sine', .12, 40); noise(t, .25, 3000, .25, 'highpass'); }
 function sfxWhoosh() { const a = ac(), t = a.currentTime; noise(t, .3, 400, .5, 'bandpass', 3000); }
 function sfxGiggle() { const a = ac(); let t = a.currentTime; for (let i = 0; i < 6; i++) { tone(1400 + i * 60, 1900 + i * 80, t, .06, 'square', .06); t += .085; } }
 function sfxEek() { const a = ac(), t = a.currentTime; tone(1300, 2600, t, .14, 'square', .07, 30); tone(1500, 2900, t + .17, .16, 'square', .07, 30); }
@@ -382,7 +434,7 @@ function melody(notes, step = .16) { const a = ac(); let t = a.currentTime + .03
 const CHILD = { shift: 1.18, length: 1.2, noise: .4, noiseW: .55 };
 const ROBOT = { ring: 0, comb: .15 };
 const VOICE_FILE = 'voice/de-kerstin-low.onnx';
-let voiceAnalyser = null, currentVoiceSrc = null, deviceVoiceActive = false;
+let voiceAnalyser = null, currentVoiceSrc = null, currentVoiceOut = null, deviceVoiceActive = false;
 let piper = null, piperLoading = null;
 const asset = p => new URL(p, document.baseURI).href;
 const loadProg = { voice: 0, ears: 0 };
@@ -473,7 +525,7 @@ function playPcm(pcm, rate) {
   carrier.start(); setTimeout(() => { try { carrier.stop(); } catch (e) {} }, (buf.duration / CHILD.shift) * 1000 + 600);
   if (!voiceAnalyser) { voiceAnalyser = a.createAnalyser(); voiceAnalyser.fftSize = 512; voiceAnalyser.connect(master); }
   out.connect(voiceAnalyser);
-  currentVoiceSrc = src; src.start();
+  currentVoiceSrc = src; currentVoiceOut = out; src.start();
   const dur = buf.duration / CHILD.shift;
   return new Promise(res => { src.onended = res; setTimeout(res, dur * 1000 + 400); }).then(() => { if (currentVoiceSrc === src) currentVoiceSrc = null; });
 }
@@ -512,19 +564,25 @@ function speakDevice(text) {
     deviceVoiceActive = true; speechSynthesis.speak(u);
   });
 }
-function stopVoice() {
-  try { if (currentVoiceSrc) currentVoiceSrc.stop(); } catch (e) {}
-  currentVoiceSrc = null;
+function stopVoice(fade) {
+  const src = currentVoiceSrc, out = currentVoiceOut;
+  if (src && fade && out && AC) {
+    // fade out quickly instead of cutting off mid-word
+    try { out.gain.setTargetAtTime(0, AC.currentTime, .06); } catch (e) {}
+    setTimeout(() => { try { src.stop(); } catch (e) {} }, 260);
+  } else { try { if (src) src.stop(); } catch (e) {} }
+  currentVoiceSrc = null; currentVoiceOut = null;
   if ('speechSynthesis' in window) speechSynthesis.cancel();
 }
 
-let sayToken = 0, lastSaid = '', lastSaidEnd = 0;
-async function say(text, expr = 'happy', holdMs) {
+let sayToken = 0, lastSaid = '', lastSaidEnd = 0, speakStart = 0, lastAnswer = '', lastAnswerMood = 'happy';
+async function say(text, expr = 'happy', holdMs, keepLast) {
   const my = ++sayToken;
   stopVoice();
   setSub(text); lastSaid = text;
+  if (!keepLast) { lastAnswer = text; lastAnswerMood = expr || 'happy'; }
   if (expr) setExpr(expr, holdMs || 2600 + text.length * 60);
-  speaking = true;
+  speaking = true; speakStart = now();
   try {
     if (settings.voiceMode === 'beeps') { await wait(babble(Math.max(2, Math.min(16, Math.round(text.length / 4))), expr)); }
     else {
@@ -536,6 +594,26 @@ async function say(text, expr = 'happy', holdMs) {
   } finally {
     if (my === sayToken) { speaking = false; lastSaidEnd = now(); clearTimeout(subTimer); subTimer = setTimeout(() => setSub(''), 4000); }
   }
+}
+
+// When you start talking while EMO talks, he goes quiet and listens.
+function echoScore(t) {
+  const said = norm(lastSaid).split(' ').map(simp).filter(Boolean), heard = t.split(' ').map(simp).filter(Boolean);
+  if (!heard.length) return 1;
+  const hit = heard.filter(h => said.some(w => w === h || (h.length > 3 && w.length > 3 && (lev(h, w) <= 1 || h.slice(0, 4) === w.slice(0, 4))))).length;
+  return hit / heard.length;
+}
+function canBarge(t) {
+  const w = t.split(' ').filter(x => x.length > 1);
+  return speaking && !actionLock && now() - speakStart > 350 && w.length >= 2 && t.replace(/ /g, '').length >= 7 && echoScore(t) < .34;
+}
+function bargeIn() {
+  stopVoice(true); sayToken++; speaking = false; lastSaidEnd = now();
+  setExpr('curious', 2000); lookAt(0, 0, 2000);
+}
+function repeatLast() {
+  if (!lastAnswer) return say('Ich hab doch noch gar nichts gesagt!', 'curious', 0, true);
+  say(pick(['Ich hab gesagt: ', 'Nochmal: ', 'Okay, nochmal: ']) + lastAnswer, lastAnswerMood, 0, true);
 }
 
 /* ================= Screen text ================= */
@@ -570,8 +648,8 @@ function lowerHands(silent) {
   hands.target = 0; hands.tremble = 0; hands.wave = 0;
   if (!silent) say(pick(['Puh. Darf ich die Hände wieder runter nehmen?', 'Meine Arme sind müde.', 'Puh, Glück gehabt.']), 'happy');
 }
-function shoot(target, onHit) {
-  bullets.push({ x0: W / 2 + rand(-.15, .15) * W, y0: H + 30, x1: target.x, y1: target.y, r0: 16, r1: 3.5, p: 0, dur: 150, onHit });
+function shoot(target, onHit, dur = 150) {
+  bullets.push({ x0: W / 2 + rand(-.15, .15) * W, y0: H + 30, x1: target.x, y1: target.y, r0: 18, r1: 3.5, p: 0, dur, onHit });
 }
 async function bang() {
   if (actionLock) return;
@@ -582,43 +660,66 @@ async function bang() {
     if (Math.random() * 100 < settings.dodge) await dodge(); else await getHit();
   } finally {
     actionLock = false; face.k = 7; face.tx = face.ty = face.trot = 0; face.tsc = 1; exprUntil = now();
+    timeTarget = 1; timeScale = 1; eyes.forEach(e => e.flicker = 0);
   }
 }
+// Hit: the bullet crawls toward an eye in slow motion, then everything snaps back to full speed.
 async function getHit() {
   const i = Math.random() < .5 ? 0 : 1, pos = eyeScreenPos(i);
-  await new Promise(res => shoot(pos, res));
-  sfxCrack(); shake = 1; burst(pos.x, pos.y, 26, [EYE, '#ffffff', '#ffe2a8']);
-  setExpr('pain', 0);
-  eyes[i].crack = { x: rand(-.15, .15), y: rand(-.15, .1), lines: makeCrackLines(S * .2, 7), alpha: 1, fading: false };
-  hands.wave = 0; hands.tremble = 0;
-  await wait(450);
-  say(pick(['Aua! Du hast mich erwischt!', 'Aaah! Getroffen!', 'Ich sehe Sterne!']), 'pain', 0);
+  const arrived = new Promise(res => shoot(pos, res, 420));
+  await wait(110);
+  timeTarget = .1; sfxSlowmo();
+  setExpr('surprised', 0); eyes.forEach(e => { e.tgt.h = 1.3; e.tgt.w = .9; }); hands.tremble = 2; lookAt(0, .3, 3000);
   await wait(1500);
-  eyes.forEach(e => e.special = 'x'); sfxPowerDown();
-  face.k = 2.2; face.trot = -.35; face.ty = .28; face.tsc = .92; hands.target = 0;
-  await wait(2600);
+  timeTarget = 1; timeScale = 1;
+  await arrived;
+  sfxCrack(); sfxGlitch(); flash = .8; shake = 1.6; glitch = 1;
+  burst(pos.x, pos.y, 50, [EYE, '#ffffff', '#ffe2a8', '#ff6b6b']);
+  eyes[i].crack = { x: rand(-.15, .15), y: rand(-.15, .1), lines: makeCrackLines(S * .22, 8), alpha: 1, fading: false };
+  eyes[i].flicker = 1;
+  face.k = 30; face.tx = i ? .14 : -.14; face.trot = i ? .3 : -.3;
+  setExpr('pain', 0); hands.wave = 0; hands.tremble = 0;
+  await wait(180);
+  face.k = 8; face.tx = 0; face.trot = i ? .08 : -.08;
+  await wait(250);
+  say(pick(['Aua! Du hast mich erwischt!', 'Aaah! Getroffen!', 'Ich sehe Sterne!', 'Ahhh! Mein Auge!']), 'pain', 0);
+  await wait(1400);
+  // dramatic fall
+  eyes.forEach(e => e.special = 'x'); sfxPowerDown(); glitch = .5;
+  face.k = 2.2; face.trot = -.38; face.ty = .3; face.tsc = .9; hands.target = 0;
+  for (let k = 0; k < 6; k++) { await wait(400); const p2 = eyeScreenPos(i); burst(p2.x, p2.y - 10, 4, ['#9fb4bd', '#5f7a86', EYE]); }
+  // reboot
+  glitch = .9; sfxGlitch(); await wait(300);
   face.k = 9; face.trot = 0; face.ty = 0; face.tsc = 1;
-  eyes.forEach(e => { e.special = null; if (e.crack) e.crack.fading = true; });
-  sfxPowerUp();
-  await wait(350);
+  eyes.forEach(e => { e.special = null; e.flicker = 0; if (e.crack) e.crack.fading = true; });
+  sfxPowerUp(); bootT = .1;
+  await wait(500);
   await say(pick(['Hihi, nur Spaß! Ich bin unkaputtbar!', 'Reingelegt! Mir geht es super!', 'Neustart fertig. Ich lebe noch!']), 'laugh');
 }
+// Dodge: like in the movies. Time slows down, EMO leans away and the bullet misses him by a hair.
 async function dodge() {
-  const dir = Math.random() < .5 ? -1 : 1, duck = Math.random() < .3;
-  const where = { x: W / 2 + face.x * S, y: H * FACE_Y + face.y * S };
-  face.k = 26; sfxWhoosh();
-  if (duck) { face.ty = .62; face.tsc = .85; } else { face.tx = dir * .62; face.trot = dir * .25; }
-  setExpr('surprised', 0);
-  eyes.forEach(e => { e.tgt.w = 1.2; e.tgt.h = .8; });
-  await new Promise(res => shoot(where, res));
-  sfxCrack();
-  screenCracks.push({ x: where.x, y: where.y, lines: makeCrackLines(S * .35, 9), alpha: 1, fadeAt: now() + 2200 });
-  burst(where.x, where.y, 14, ['#ffffff', '#e9fbff']);
-  await wait(420);
+  const dir = Math.random() < .5 ? -1 : 1, duck = Math.random() < .25;
+  const cx = W / 2 + face.x * S, cy = H * FACE_Y + face.y * S;
+  const target = duck ? { x: cx + rand(-.05, .05) * S, y: cy - .02 * S } : { x: cx - dir * .08 * S, y: cy - .03 * S };
+  const passed = new Promise(res => shoot(target, res, 460));
+  await wait(110);
+  timeTarget = .08; sfxSlowmo();
+  setExpr('surprised', 0); eyes.forEach(e => { e.tgt.w = 1.15; e.tgt.h = .75; });
+  face.k = 9;
+  if (duck) { face.ty = .5; face.tsc = .82; } else { face.tx = dir * .55; face.trot = dir * .4; face.tsc = .94; }
+  hands.wave = 1;
+  await wait(1700);
+  timeTarget = 1;
+  await passed;
+  sfxRicochet(); sfxCrack(); shake = .5;
+  screenCracks.push({ x: target.x, y: target.y, lines: makeCrackLines(S * .38, 10), alpha: 1, fadeAt: now() + 2400 });
+  burst(target.x, target.y, 22, ['#ffffff', '#e9fbff']);
+  await wait(500);
   face.k = 10; face.tx = 0; face.ty = 0; face.trot = 0; face.tsc = 1;
   await wait(250);
+  sweat = { t0: now(), side: dir > 0 ? -1 : 1 };
   lookAt(0, 0, 2500);
-  await say(pick(['Daneben! Hihi!', 'Ha! Zu langsam!', 'Matrix-Ausweich-Modus!', 'Nicht getroffen. Nä nä nä!']), Math.random() < .5 ? 'smug' : 'wink', 2400);
+  await say(pick(['Puh! Das war knapp!', 'Matrix-Modus! Hihi!', 'Daneben! Ich bin zu schnell für dich!', 'Uff, knapp vorbei!', 'Ha! Nicht mit mir!']), Math.random() < .5 ? 'smug' : 'wink', 2400);
   lowerHands(true);
 }
 async function dance() {
@@ -735,6 +836,7 @@ function setSubs(on) {
   say(on ? 'Okay! Jetzt kannst du mitlesen.' : 'Okay, Untertitel sind aus.', 'happy');
 }
 const ACTION_RULES = [
+  [/was hast du (da |eben |gerade |grad )?(noch ?mal |nochmal )?gesagt|wiederhol|sag (das|es) (bitte )?(noch ?mal|nochmal)|noch ?mal bitte|^wie bitte|nicht verstanden/, () => repeatLast()],
   [t => subsSaid(t) && /\b(aus|weg|ab|stopp|ausschalten|ausmachen|nicht mehr)\b/.test(t), () => setSubs(false)],
   [t => subsSaid(t), () => setSubs(true)],
   [/\b(tanz|tanzen|tanze|dance)\b/, () => dance()],
@@ -1056,8 +1158,10 @@ const QUICK = t => handsUpSaid(t) || bangSaid(t) || HANDS_DOWN.test(t);
 let utterQuick = false, utterStart = 0, utterDuringSpeech = false;
 function heardPartial(txt) {
   const t = norm(txt || '');
-  if (t && !utterStart) { utterStart = now(); utterDuringSpeech = speaking || now() - lastSaidEnd < 600; }
-  if (!t || utterQuick || !QUICK(t) || isEcho(t)) return;
+  if (!t) return;
+  if (!utterStart) { utterStart = now(); utterDuringSpeech = speaking || now() - lastSaidEnd < 250; }
+  if (utterDuringSpeech && canBarge(t)) { bargeIn(); utterDuringSpeech = false; }
+  if (utterQuick || !QUICK(t) || isEcho(t)) return;
   utterQuick = true; setHeard(txt); activity(); quickAction(t);
 }
 function heardFinal(txt) {
@@ -1099,6 +1203,7 @@ function newSession() {
     for (let i = 0; i < e.results.length; i++) { full += e.results[i][0].transcript + ' '; lastFinal = e.results[i].isFinal; }
     const fresh = full.slice(consumed).trim();
     if (!fresh) return;
+    if (canBarge(norm(fresh))) bargeIn();
     if (QUICK(norm(fresh))) { consumed = full.length; clearTimeout(finalizeTimer); utterQuick = false; heardPartial(fresh); utterQuick = false; return; }
     clearTimeout(finalizeTimer);
     const done = () => { if (me !== rec) return; consumed = full.length; heardFinal(fresh); };
