@@ -102,7 +102,9 @@ const EXPR = {
   sad: { tOut: .45, tIn: .05, h: .85, dy: .07 },
   angry: { tIn: .52, tOut: .06, h: .9 },
   surprised: { h: 1.18, w: .98, r: 1.5 },
-  scared: { w: .74, h: .82, r: 1.6 },
+  scared: { tOut: .3, h: 1.06, w: .95 },
+  nervous: { tOut: .42, tIn: .02, h: .93, dy: .04 },
+  focus: { tIn: .2, tOut: .1, h: .9, bot: .12 },
   sleepy: { tIn: .56, tOut: .6, bot: .1 },
   asleep: { tIn: .94, tOut: .94, dy: .05 },
   squint: { tIn: .32, tOut: .32, bot: .3, w: 1.15 },
@@ -119,6 +121,7 @@ const eyes = [0, 1].map(() => ({ cur: basePose(), tgt: basePose(), special: null
 const gaze = { x: 0, y: 0, tx: 0, ty: 0 };
 const face = { x: 0, y: 0, rot: 0, sc: 1, tx: 0, ty: 0, trot: 0, tsc: 1, k: 7 };
 const hands = { t: 0, v: 0, target: 0, wave: 0, tremble: 0, since: 0 };
+const greetHand = { t: 0, target: 0, until: 0 };
 let blinkPhase = -1, nextBlink = now() + 2500;
 let nextSaccade = now() + 1500;
 let exprName = 'neutral', exprUntil = Infinity;
@@ -148,7 +151,7 @@ function restingExpr() {
   if (started && !greeted) return 'sleepy';
   if (asleep) return 'asleep';
   if (thinking) return 'thinking';
-  if (hands.target > .5) return 'scared';
+  if (hands.target > .5) return 'nervous';
   if (now() - lastActive > 90000) return 'sleepy';
   return 'neutral';
 }
@@ -256,6 +259,111 @@ function drawBrokenScreen(g, cx, cy, b, t) {
   if (Math.random() < .08 * fade) { g.globalAlpha = .35; g.fillStyle = '#39ff6a'; g.fillRect(-w / 2, rand(-.5, .5) * h, w, 2); }
   g.restore(); g.globalAlpha = 1;
 }
+// Drawing: EMO holds a pencil and draws a picture below his eyes, line by line.
+let drawing = null, drawToken = 0;
+const arc = (cx, cy, rx, ry, a0, a1, n = 24) => Array.from({ length: n + 1 }, (_, k) => { const a = a0 + (a1 - a0) * k / n; return [cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]; });
+const TAU = Math.PI * 2;
+const PICTURES = {
+  herz: { name: 'ein Herz', c: '#ff4f7b', end: ['Tada! Ein Herz für dich!', 'Fertig! Ein Herz, weil ich dich mag.'],
+    strokes: () => [Array.from({ length: 61 }, (_, k) => { const a = k / 60 * TAU; return [16 * Math.sin(a) ** 3 / 17, -(13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)) / 17 - .1]; })] },
+  stern: { name: 'einen Stern', c: '#ffd84d', end: ['Tada! Ein Stern! Der leuchtet wie du.', 'Fertig! Ein Stern für dich.'],
+    strokes: () => [Array.from({ length: 11 }, (_, k) => { const a = -Math.PI / 2 + k / 10 * TAU, r = k % 2 ? .4 : .95; return [Math.cos(a) * r, Math.sin(a) * r + .05]; })] },
+  sonne: { name: 'eine Sonne', c: '#ffc93a', end: ['Tada! Eine Sonne. Jetzt ist es warm!', 'Fertig! Die Sonne lacht.'],
+    strokes: () => [arc(0, 0, .45, .45, 0, TAU, 30), ...Array.from({ length: 8 }, (_, k) => { const a = k / 8 * TAU; return [[Math.cos(a) * .6, Math.sin(a) * .6], [Math.cos(a) * .92, Math.sin(a) * .92]]; })] },
+  haus: { name: 'ein Haus', c: '#7ee7ff', end: ['Tada! Ein Haus. Da wohne ich!', 'Fertig! Mein Haus. Emo go home!'],
+    strokes: () => [[[-.7, -.05], [-.7, .85], [.7, .85], [.7, -.05], [-.7, -.05]], [[-.85, .05], [0, -.8], [.85, .05]], [[-.15, .85], [-.15, .4], [.15, .4], [.15, .85]], [[.3, .1], [.55, .1], [.55, .3], [.3, .3], [.3, .1]]] },
+  blume: { name: 'eine Blume', c: '#ff7ad9', end: ['Tada! Eine Blume für dich!', 'Fertig! Riech mal. Na gut, sie riecht nach Strom.'],
+    strokes: () => [arc(0, -.3, .16, .16, 0, TAU, 18), ...Array.from({ length: 6 }, (_, k) => { const a = k / 6 * TAU; return arc(Math.cos(a) * .36, -.3 + Math.sin(a) * .36, .2, .2, 0, TAU, 16); }), [[0, -.05], [.05, .4], [0, .9]], arc(.22, .55, .2, .09, Math.PI, TAU + Math.PI, 16)] },
+  baum: { name: 'einen Baum', c: '#6dff8f', end: ['Tada! Ein Baum!', 'Fertig! Ein Baum. Da wohnen Vögel drin.'],
+    strokes: () => [[[-.12, .9], [-.12, .25], [.12, .25], [.12, .9]], Array.from({ length: 41 }, (_, k) => { const a = k / 40 * TAU; const r = .5 + .08 * Math.sin(a * 7); return [Math.cos(a) * r, -.2 + Math.sin(a) * r * .9]; })] },
+  smiley: { name: 'ein Smiley', c: '#ffe14d', end: ['Tada! Ein Smiley. Der lacht so wie ich!', 'Fertig! Schau, er lacht!'],
+    strokes: () => [arc(0, 0, .85, .85, -Math.PI / 2, TAU - Math.PI / 2, 36), [[-.3, -.35], [-.3, -.15]], [[.3, -.35], [.3, -.15]], arc(0, .05, .5, .45, .2, Math.PI - .2, 16)] },
+  katze: { name: 'eine Katze', c: '#ffb15a', end: ['Tada! Eine Katze. Miau!', 'Fertig! Miau! Das ist eine Katze.'],
+    strokes: () => [arc(0, .1, .7, .6, 0, TAU, 32), [[-.6, -.2], [-.5, -.8], [-.15, -.45]], [[.6, -.2], [.5, -.8], [.15, -.45]], arc(-.25, 0, .07, .1, 0, TAU, 10), arc(.25, 0, .07, .1, 0, TAU, 10), [[-.06, .2], [.06, .2], [0, .28], [-.06, .2]], [[-.15, .3], [-.85, .2]], [[-.15, .36], [-.85, .45]], [[.15, .3], [.85, .2]], [[.15, .36], [.85, .45]]] },
+  mond: { name: 'einen Mond', c: '#fff3a8', end: ['Tada! Ein Mond. Gute Nacht, Mond!', 'Fertig! Ein Mond.'],
+    strokes: () => [[...arc(0, 0, .8, .8, -2.2, 2.2, 30), ...arc(.45, 0, .62, .65, 2.0, -2.0, 30)]] },
+  fisch: { name: 'einen Fisch', c: '#4dd7ff', end: ['Tada! Ein Fisch. Blub blub!', 'Fertig! Blub, blub, blub.'],
+    strokes: () => [arc(-.1, 0, .6, .38, 0, TAU, 30), [[.5, 0], [.9, -.35], [.9, .35], [.5, 0]], arc(-.4, -.08, .06, .06, 0, TAU, 8), arc(-.1, -.65, .06, .06, 0, TAU, 8), arc(.05, -.85, .08, .08, 0, TAU, 8)] },
+  auto: { name: 'ein Auto', c: '#ff6a5a', end: ['Tada! Ein Auto. Brumm brumm!', 'Fertig! Brumm, brumm!'],
+    strokes: () => [[[-.9, .35], [-.9, 0], [-.45, 0], [-.25, -.4], [.35, -.4], [.55, 0], [.9, 0], [.9, .35], [-.9, .35]], arc(-.45, .4, .18, .18, 0, TAU, 16), arc(.5, .4, .18, .18, 0, TAU, 16), [[.05, -.4], [.05, 0]]] },
+  regenbogen: { name: 'einen Regenbogen', c: ['#ff5a5a', '#ffa64d', '#ffe14d', '#6dff8f', '#4dd7ff', '#b07aff'], end: ['Tada! Ein Regenbogen! So schön bunt.', 'Fertig! Ein Regenbogen.'],
+    strokes: () => [0, 1, 2, 3, 4, 5].map(k => arc(0, .55, .95 - k * .1, .95 - k * .1, Math.PI, TAU, 26)) },
+};
+const PICTURE_WORDS = [[/herz/, 'herz'], [/stern/, 'stern'], [/sonne/, 'sonne'], [/haus|häuschen/, 'haus'], [/blume|rose/, 'blume'], [/baum|bäume|tanne/, 'baum'], [/smiley|gesicht|lachen/, 'smiley'], [/katze|kätzchen|katzen|kater/, 'katze'], [/mond/, 'mond'], [/fisch/, 'fisch'], [/auto|car/, 'auto'], [/regenbogen/, 'regenbogen']];
+async function drawPicture(t) {
+  const hit = PICTURE_WORDS.find(([re]) => re.test(t));
+  const what = (t.match(/(?:zeichne|zeichnen|zeichnest|male|malen|malst|mal)(?: mir| uns| mal| bitte| doch| jetzt)* (?:ein|eine|einen|was|etwas|irgendwas)? ?([a-zäöüß]+)/) || [])[1];
+  const key = hit ? hit[1] : pick(Object.keys(PICTURES)), P = PICTURES[key];
+  const my = ++drawToken; activity();
+  // one path: the pen draws the strokes and lifts between them
+  const pts = [];
+  P.strokes().forEach((st, si) => st.forEach((q, k) => pts.push({ x: q[0], y: q[1], pen: k > 0, s: si })));
+  const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y) * (pts[i].pen ? 1 : .5));
+  const total = cum[cum.length - 1];
+  drawing = { P, pts, cum, total, d: 0, speed: total / Math.min(6, Math.max(2.6, total * .45)), hand: 0, done: false, fade: 1 };
+  setExpr('focus', 0);
+  const intro = hit || !what || /^(was|etwas|irgendwas|bild|bitte)$/.test(what) ? pick([`Okay! Ich male dir ${P.name}.`, `Klar! Ich male ${P.name}.`, `Pass auf, ich male ${P.name}!`]) : `Das kann ich noch nicht malen. Aber ich male dir ${P.name}!`;
+  say(intro, 'focus', 0);
+  while (drawing && drawToken === my && !drawing.done) await wait(100);
+  if (drawToken !== my || !drawing) return;
+  sfxGiggle(); setExpr('happy', 3000);
+  await say(pick(P.end), 'happy');
+  await wait(3500);
+  if (drawToken === my && drawing) drawing.fadeOut = true;
+}
+function drawBox() {
+  const top = H * FACE_Y + .3 * S, avail = Math.max(60, H - top - .04 * S);
+  const R = Math.min(W * .28, avail * .42, S * .5);
+  return { cx: W / 2, cy: top + Math.min(avail / 2, R * 1.25), R };
+}
+function drawingStep(dt, t) {
+  const D = drawing; if (!D) return;
+  D.hand = Math.min(1, D.hand + dt * (D.done ? -1.5 : 3)) ;
+  if (D.done && D.hand < 0) D.hand = 0;
+  if (!D.done && D.hand > .5) { D.d += D.speed * dt; if (D.d >= D.total) { D.d = D.total; D.done = true; } }
+  if (D.fadeOut) { D.fade -= dt * 1.2; if (D.fade <= 0) { drawing = null; return; } }
+  // EMO watches the tip of his pencil
+  if (!D.done && hands.target < .5) { const b = drawBox(), p = penAt(D); gaze.tx = Math.max(-1, Math.min(1, (p.x - b.cx) / (W * .3))); gaze.ty = .9; nextSaccade = t + 300; }
+}
+function penAt(D) {
+  const b = drawBox(), { pts, cum } = D;
+  let i = 1; while (i < pts.length - 1 && cum[i] < D.d) i++;
+  const k = cum[i] > cum[i - 1] ? Math.max(0, Math.min(1, (D.d - cum[i - 1]) / (cum[i] - cum[i - 1]))) : 1;
+  return { x: b.cx + lerp(pts[i - 1].x, pts[i].x, k) * b.R, y: b.cy + lerp(pts[i - 1].y, pts[i].y, k) * b.R, pen: pts[i].pen, i, k };
+}
+function renderDrawing(g, t) {
+  const D = drawing; if (!D) return;
+  const b = drawBox(), { pts, cum, P } = D, pen = penAt(D);
+  g.save(); g.globalAlpha = Math.max(0, D.fade); g.lineCap = 'round'; g.lineJoin = 'round'; g.lineWidth = Math.max(3, b.R * .055);
+  let cur = -1;
+  const col = s => Array.isArray(P.c) ? P.c[s % P.c.length] : P.c;
+  for (let i = 1; i < pts.length && cum[i - 1] < D.d; i++) {
+    if (!pts[i].pen) continue;
+    if (pts[i].s !== cur) { if (cur >= 0) g.stroke(); cur = pts[i].s; g.strokeStyle = col(cur); g.beginPath(); g.moveTo(b.cx + pts[i - 1].x * b.R, b.cy + pts[i - 1].y * b.R); }
+    const k = cum[i] <= D.d ? 1 : (D.d - cum[i - 1]) / (cum[i] - cum[i - 1]);
+    g.lineTo(b.cx + lerp(pts[i - 1].x, pts[i].x, k) * b.R, b.cy + lerp(pts[i - 1].y, pts[i].y, k) * b.R);
+  }
+  if (cur >= 0) g.stroke();
+  // the hand with the pencil
+  if (D.hand > 0) {
+    const L = .24 * S, lift = pen.pen || D.done ? 0 : S * .025, a = D.hand;
+    const x = pen.x + (1 - a) * S * .5, y = pen.y - lift + (1 - a) * S * .3 + Math.sin(t / 60) * (D.done ? 0 : S * .002);
+    g.globalAlpha = Math.max(0, D.fade) * Math.min(1, a * 1.5);
+    g.save(); g.translate(x, y); g.rotate(.85);
+    g.fillStyle = Array.isArray(P.c) ? P.c[0] : P.c; g.beginPath(); g.moveTo(0, 0); g.lineTo(-L * .045, -L * .1); g.lineTo(L * .045, -L * .1); g.closePath(); g.fill();
+    g.fillStyle = '#f6d7a8'; g.beginPath(); g.moveTo(-L * .045, -L * .1); g.lineTo(-L * .06, -L * .2); g.lineTo(L * .06, -L * .2); g.lineTo(L * .045, -L * .1); g.closePath(); g.fill();
+    g.fillStyle = '#ffcc33'; g.fillRect(-L * .06, -L * .88, L * .12, L * .68);
+    g.fillStyle = '#c9c9c9'; g.fillRect(-L * .06, -L * .94, L * .12, L * .06);
+    g.fillStyle = '#ff8fb0'; rr(g, -L * .06, -L * 1.02, L * .12, L * .1, L * .03); g.fill();
+    // a little fist holding the pencil: palm under it, fingers wrapped over it, thumb on top
+    g.fillStyle = eyeCol(); const u = S;
+    rr(g, L * .02, -L * .62, u * .085, u * .11, u * .035); g.fill();
+    for (let k = 0; k < 3; k++) { rr(g, -u * .03, -L * .6 + u * .008 + k * u * .03, u * .06, u * .026, u * .013); g.fill(); }
+    g.save(); g.translate(-u * .01, -L * .62); g.rotate(-.5); rr(g, -u * .013, -u * .05, u * .026, u * .06, u * .013); g.fill(); g.restore();
+    g.restore();
+  }
+  g.restore(); g.globalAlpha = 1;
+}
 function drawHand(g, x, y, side, rot, t) {
   g.save(); g.translate(x, y); g.rotate(rot);
   const u = S * .0078; g.scale(u, u);
@@ -290,7 +398,9 @@ function render(t) {
     });
     g.restore(); g.globalAlpha = 1;
   }
-  for (let i = 0; i < 2; i++) { const side = i ? 1 : -1; drawEye(g, side * .27 * S + gx, gy - .02 * S, side, eyes[i], t); }
+  // with the hands up the eyes tremble a little, like the hands
+  const ex = hands.tremble * hands.t * Math.sin(t / 27) * S * .004, ey = hands.tremble * hands.t * Math.sin(t / 19 + 1) * S * .003;
+  for (let i = 0; i < 2; i++) { const side = i ? 1 : -1; drawEye(g, side * .27 * S + gx + ex, gy - .02 * S + ey, side, eyes[i], t); }
   if (sweat) {
     const k = (now() - sweat.t0) / 1400;
     if (k > 1) sweat = null;
@@ -308,6 +418,11 @@ function render(t) {
       drawHand(g, side * .76 * S + trem, y + Math.sin(t / 180 + side) * S * .01, side, side * (.12 + Math.sin(t / 160) * .14 * hands.wave), t);
     }
   }
+  if (greetHand.t > .01 && hands.t < .3) {
+    // one hand comes up and waves hello
+    const downY = H * (1 - FACE_Y) / face.sc + .3 * S, y = lerp(downY, .1 * S, greetHand.t);
+    drawHand(g, .66 * S + Math.sin(t / 110) * S * .035, y, 1, .1 + Math.sin(t / 110) * .35, t);
+  }
   drawTongue(g, t);
   if (thinking) {
     for (let i = 0; i < 3; i++) { const a = (Math.sin(t / 200 - i * .9) + 1) / 2; g.globalAlpha = .3 + a * .7; g.fillStyle = EYE; g.beginPath(); g.arc((i - 1) * .07 * S, .3 * S, .018 * S, 0, Math.PI * 2); g.fill(); }
@@ -319,6 +434,7 @@ function render(t) {
     g.globalAlpha = 1;
   }
   g.restore();
+  renderDrawing(g, t);
 
   for (const c of screenCracks) {
     g.save(); g.translate(c.x, c.y); g.globalAlpha = Math.max(0, c.alpha) * .85; g.strokeStyle = '#e9fbff'; g.lineWidth = 1.6; g.lineJoin = 'round'; strokeLines(g, c.lines);
@@ -487,6 +603,9 @@ function update(dt, t) {
   // the device's recognizer never started (or hears speech but never understands anything): switch to EMO's own ears
   if (listenMode === 'web' && !webWorked && ((speechSeenAt && t - speechSeenAt > 10000) || (!webStarted && webAskedAt && t - webAskedAt > 12000))) { speechSeenAt = 0; fallbackToVosk(); }
   shakeStep(realDt, t);
+  drawingStep(realDt, t);
+  if (greetHand.target && t > greetHand.until) greetHand.target = 0;
+  greetHand.t += (greetHand.target - greetHand.t) * ease(greetHand.target ? 9 : 6, realDt);
   if (hands.target > .5 && !actionLock && !speaking && t - hands.since > 15000) { hands.since = t + 1e9; lowerHands(); }
 
   shake *= Math.exp(-7 * realDt); flash *= Math.exp(-9 * realDt);
@@ -828,7 +947,7 @@ function raiseHands(viaGun) {
   if (asleep) { asleep = false; bootT = 1; }
   activity();
   hands.target = 1; hands.since = now(); hands.wave = .3; hands.tremble = 1; hands.v = 6;
-  setExpr('scared', 0); lookAt(0, 0, 3000);
+  setExpr('nervous', 0); lookAt(0, 0, 3000); drawing = null;
 }
 function lowerHands(silent) {
   if (hands.target < .5) return;
@@ -842,7 +961,7 @@ async function bang() {
   if (actionLock) return;
   actionLock = true; activity(); stopVoice(); sayToken++; speaking = false;
   if (asleep) { asleep = false; bootT = 1; }
-  flash = 1; sfxBang();
+  flash = 1; sfxBang(); drawing = null;
   try {
     if (Math.random() * 100 < settings.dodge) await dodge(); else await getHit();
   } finally {
@@ -1035,7 +1154,7 @@ const HANDS_DOWN = /\b(h(ä|a|e)nde?|arme)\s*(wieder\s*)?(runter|nach unten)/;
 const norm = s => {
   let t = s.toLowerCase().replace(/[!?.,;:"'„“]/g, ' ').replace(/\s+/g, ' ').trim();
   // "hey Emo, sei leise" -> "sei leise"; a plain "hallo Emo" stays a greeting
-  const m = t.match(/^(hey |hallo |hi |ok |okay |du |na )?(emo|emma|ema|nemo|imo|e-mo)\b\s*(.*)$/);
+  const m = t.match(/^(hey |hallo |hi |ok |okay |du |na )?(emo|emma|ema|nemo|imo|e-mo|elmo|emu|emmo|ehmo|immo|amo|emos)\b\s*(.*)$/);
   if (m) t = m[3] || (m[1] && /hallo|hey|hi/.test(m[1]) ? 'hallo' : '');
   return t.trim();
 };
@@ -1060,8 +1179,9 @@ function namesIn(words) {
   while (out.length && out[out.length - 1] === 'und') out.pop();
   return out.length && out.length <= 5 ? out.join(' ') : '';
 }
+function waveHello(ms = 2600) { greetHand.target = 1; greetHand.until = now() + ms; }
 function greetPerson(name) {
-  sfxGiggle();
+  sfxGiggle(); waveHello();
   const many = / und /.test(name);
   return say(pick([`Hallo ${name}! Ich bin Emo. Schön, ${many ? 'euch' : 'dich'} kennenzulernen!`, `Hi ${name}! Ich bin Emo, der kleine Roboter.`, `Huhu ${name}! Schön, dass ${many ? 'ihr da seid' : 'du da bist'}!`]), 'happy');
 }
@@ -1087,11 +1207,11 @@ const FEELINGS = [[/traurig/, 'sad'], [/fröhlich|glücklich|happy|freu/, 'happy
 function feeling(t) { for (const [re, e] of FEELINGS) if (re.test(t)) return e; return null; }
 const COMMANDS = [
   // "Grüß mal Peter", "Begrüß Anna", "Sag hallo zu Peter", "Sag Peter hallo"
-  [/^(grüß|grüße|grüss|grüsse|begrüß|begrüße|begrüss|begrüsse)( mal| bitte| doch)* (.+)$/, m => { const n = namesIn(m[3].replace(/^(den|die|der|meinen|meine|unseren|unsere)\s+/, '').split(' ')); return n ? greetPerson(n) : null; }],
+  [/(?:^|\b)(grüß|grüße|grüss|grüsse|grüßt|begrüß|begrüße|begrüss|begrüsse|gruß|grüssen)( mal| bitte| doch| jetzt| von mir| schön| mir)* (.+)$/, m => { const n = namesIn(m[3].replace(/^(den|die|der|meinen|meine|unseren|unsere|meinem|meiner)\s+/, '').replace(/ (von mir|bitte|mal|schön|herzlich)$/, '').split(' ')); return n ? greetPerson(n) : null; }],
   [/^(sag|sage)( mal| bitte| doch)* (hallo|hi|tschüss|guten tag) (zu|an) (.+)$/, m => { const n = namesIn(m[5].split(' ')); return n ? (m[3] === 'tschüss' ? say(`Tschüss ${n}! Bis bald!`, 'happy') : greetPerson(n)) : null; }],
   [/^(sag|sage)( mal| bitte| doch)* ([a-zäöüß-]+( und [a-zäöüß-]+)?) (hallo|hi|guten tag)$/, m => { const n = namesIn(m[3].split(' ')); return n ? greetPerson(n) : null; }],
   // "Hallo Sübeide" -> says the name back
-  [/^(hallo|hi|hey|huhu|servus|moin|guten (morgen|tag|abend)) (.+)$/, m => { if (/^(wie|was|na|alles)\b/.test(m[3])) return null; const n = namesIn(m[3].split(' ')); return n ? say(pick([`Hallo ${n}!`, `Hallo ${n}! Schön, dich zu sehen!`, `Hi ${n}! Ich bin Emo.`]), 'happy') : null; }],
+  [/^(hallo|hi|hey|huhu|servus|moin|guten (morgen|tag|abend)) (.+)$/, m => { if (/^(wie|was|na|alles)\b/.test(m[3])) return null; const n = namesIn(m[3].split(' ')); if (!n) return null; waveHello(); return say(pick([`Hallo ${n}!`, `Hallo ${n}! Schön, dich zu sehen!`, `Hi ${n}! Ich bin Emo.`]), 'happy'); }],
   // remember your name
   [/^(ich heiße|ich heisse|mein name ist|nenn mich|ich bin der|ich bin die) (.+)$/, m => { const n = namesIn(m[2].split(' ')); if (!n) return null; settings.userName = n; saveSettings(); sfxGiggle(); return say(`Hallo ${n}! Freut mich! Das merke ich mir.`, 'happy'); }],
   [/^wie (heiße|heisse) ich$|weißt du (noch )?wie ich heiße|kennst du meinen namen/, () => say(settings.userName ? `Du heißt ${settings.userName}!` : 'Das hast du mir noch nicht gesagt. Sag einfach: Ich heiße …', 'curious')],
@@ -1100,6 +1220,11 @@ const COMMANDS = [
   [/^(sag|sage)( mal| bitte| doch| jetzt)* (deinen namen|wie du heißt)$/, () => say('Ich heiße Emo!', 'happy')],
   [/^(sag|sage)( mal| bitte| doch| jetzt)* (?!(?:mal|bitte|doch|jetzt|mir|uns|was|wer|wie|wo|wann|warum|wieso|welche|ob|bescheid|das nochmal|das noch mal|es nochmal)\b)(.+)$/, m => say(capFirst(m[3]) + '!', 'happy')],
   // little tricks
+  [/\b(zeichne|zeichnen|zeichnest|male|malen|malst)\b|^mal (mir |uns )?(ein|eine|einen|was|etwas|irgendwas|bitte)\b/, (m, t) => drawPicture(t)],
+  [/^(wein|weine|heul|heule)( mal| doch| bitte| jetzt)*$|^weinen$|(fang|fange) (an zu|mal an zu) weinen|^(sei|guck|schau)( mal| bitte| doch| jetzt)* (sehr |ganz )?traurig/, () => { crying = 4; sfxSob(); return say('Oh … jetzt bin ich sehr traurig.', 'sad', 4000); }],
+  [/(?:^|\b)(sag|sage)( mal| bitte| doch)* (hallo|hi|tschüss|guten tag) (zu|an) (.+)$/, m => { const n = namesIn(m[5].split(' ')); return n ? (m[3] === 'tschüss' ? (waveHello(), say(`Tschüss ${n}! Bis bald!`, 'happy')) : greetPerson(n)) : null; }],
+  [/(?:^|\b)(.+) (grüßen|begrüßen|grüssen)$/, m => { const n = namesIn(m[1].replace(/^(kannst du|könntest du|kann man|du sollst|bitte|mal)( mal| bitte| auch)* /, '').replace(/^(den|die|der|meinen|meine)\s+/, '').split(' ')); return n ? greetPerson(n) : null; }],
+  [/(lösch|wisch|radier)\w*( das| es| mal| bitte| weg)*/, () => { if (!drawing) return null; drawing.fadeOut = true; drawing.done = true; return say('Okay, weggewischt!', 'happy'); }],
   [/zwinker|zwinkern/, () => { sfxGiggle(); setExpr('wink', 1500); }],
   [/(mach|schließ|schliess)( mal| bitte)* (die |deine )?augen zu|augen zu/, () => { setExpr('asleep', 3000); }],
   [/(mach|öffne)( mal| bitte)* (die |deine )?augen auf|augen auf/, () => { setExpr('surprised', 1500); }],
@@ -1111,7 +1236,6 @@ const COMMANDS = [
   [/(schau|guck)( mal| bitte)* nach unten/, () => lookAt(0, 1, 2500)],
   [/(schau|guck)( mal| bitte)* (mich an|zu mir|geradeaus)/, () => lookAt(0, 0, 2500)],
   [/^(lach|lache)( mal| doch| bitte| laut)*$|^lachen$/, () => { sfxGiggle(); return say(pick(['Hahaha! Hihihi!', 'Hihihi! Hahaha!']), 'laugh'); }],
-  [/^(wein|weine|heul|heule)( mal| doch| bitte)*$|^weinen$|sei traurig|(guck|schau) traurig/, () => { crying = 4; sfxSob(); return say('Oh … jetzt bin ich sehr traurig.', 'sad', 4000); }],
   [/\b(wink|winke|winken)\b/, () => faceMove('wave')],
   [/dreh dich|drehen|im kreis/, () => faceMove('spin')],
   [/\b(spring|springe|hüpf|hüpfe)\b/, () => faceMove('jump')],

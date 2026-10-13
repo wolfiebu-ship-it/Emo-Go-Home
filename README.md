@@ -4,9 +4,9 @@ Ein kleiner Roboter auf dem Bildschirm, inspiriert von EMO. Man sieht nur seine 
 
 ## Öffnen
 
-**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v17/**
+**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v18/**
 
-Jede neue Version bekommt einen eigenen Link (`v17`, `v18`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 18`.
+Jede neue Version bekommt einen eigenen Link (`v18`, `v19`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 19`.
 
 Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gibt keine Knöpfe und keine Einstellungen.
 
@@ -19,7 +19,7 @@ Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gib
 
 **Mit Claude-Gehirn** redet er über alles und sucht im Internet. Dafür EMO einmal mit diesem Link öffnen (Schlüssel von https://console.anthropic.com/settings/keys):
 
-`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v17/#key=DEIN-SCHLÜSSEL`
+`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v18/#key=DEIN-SCHLÜSSEL`
 
 Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse entfernt. Mit `#ort=Kassel` kann man den Wohnort für das Wetter ändern (Standard: Frankfurt am Main).
 
@@ -28,7 +28,7 @@ Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse en
 | Du sagst oder machst | EMO macht |
 | --- | --- |
 | Irgendeine Frage („Wie wird das Wetter morgen?“, „Wie groß ist die Sonne?“, „Wer hat gestern gewonnen?“) | antwortet als KI, mit Wetter-Daten und Websuche |
-| „Emo, Hände hoch!“ oder Fingerpistole in die Kamera zeigen | hebt sofort die Hände, ohne etwas zu sagen |
+| „Emo, Hände hoch!“ oder Fingerpistole in die Kamera zeigen | hebt sofort die Hände, ohne etwas zu sagen, guckt ein bisschen traurig und zittert |
 | „Peng!“, „Bang!“, „Boom!“, sehr lauter Knall (wenn die Hände oben sind) oder Fingerpistole hochzucken lassen | Zeitlupe! Entweder weicht er wie im Film knapp aus, oder die Kugel trifft sein Auge: es geht kaputt wie ein Fernseher, auf den man haut (grüne und bunte Striche, Rauschen, schwarzer Fleck, Brummen). EMO guckt traurig und sagt „Oh, jetzt bin ich sehr traurig“, dann geht das Auge wieder an |
 | „Hände runter“ | nimmt die Hände runter |
 | „Erzähl einen Witz“ | erzählt jedes Mal einen anderen Witz |
@@ -44,12 +44,13 @@ Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse en
 | „Achso“, „Okay“, „Ja“ … | nickt nur, sagt nichts |
 | „Sei leise“, „Sei still“, „Halt die Klappe“, „Hör auf“ | ist sofort still, auch mitten im Satz |
 | „Sag mal hallo“, „Sag: Ich bin ein Roboter“, „Sprich mir nach: …“ | sagt genau das |
-| „Grüß mal Peter“, „Sag hallo zu Oma“, „Hallo Sübeide“ | begrüßt die Person mit Namen |
+| „Grüß mal Peter“, „Hey Emo, grüße Zübeide“, „Sag hallo zu Oma“, „Kannst du Max grüßen?“, „Hallo Sübeide“ | begrüßt die Person mit Namen und winkt dabei mit der Hand |
+| „Zeichne ein Herz“, „Mal mir ein Haus“, „Zeichne was“ | nimmt einen Stift in die Hand und malt das Bild Strich für Strich (Herz, Stern, Sonne, Haus, Blume, Baum, Smiley, Katze, Mond, Fisch, Auto, Regenbogen). „Wisch das weg“ löscht es |
 | „Ich heiße Max“ / „Wie heiße ich?“ | merkt sich deinen Namen und begrüßt dich damit |
 | „Zwinker mal“, „Guck traurig/wütend/verliebt“, „Mach Herzaugen“, „Augen zu“ | macht das Gesicht |
 | „Schau nach links/rechts/oben/unten“, „Dreh dich“, „Spring“, „Nick mal“, „Wink mal“ | bewegt sich |
 | „Zähl bis zehn“, „Zähl rückwärts“, „Lach mal“, „Stell dich vor“ | macht das |
-| „Wein mal“, „Sei traurig“ | macht ein trauriges Gesicht und sagt „Oh … jetzt bin ich sehr traurig.“ und weint |
+| „Wein mal“, „Sei traurig“, „Fang an zu weinen“ | macht ein trauriges Gesicht und sagt „Oh … jetzt bin ich sehr traurig.“ und weint |
 | „Vergiss alles“ | fängt ein neues Gespräch an |
 | „Kamera aus“ / „Kamera an“ | schaltet die Fingerpistolen-Erkennung aus oder an |
 
