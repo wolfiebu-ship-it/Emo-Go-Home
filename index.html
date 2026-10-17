@@ -130,7 +130,8 @@ let shakeEnergy = 0, shakeTime = 0, calmTime = 0, lastAcc = null, dizzy = false,
 let shards = [], tears = [], crying = 0, nextTear = 0;
 let timeScale = 1, timeTarget = 1, glitch = 0, trail = [], lastTrail = 0, sweat = null;
 let bullets = [], screenCracks = [], sparks = [];
-let thinking = false, speaking = false, talkLevel = 0;
+let thinking = false, speaking = false, talkLevel = 0, listenUntil = 0, listenK = 0;
+function perk() { if (!speaking && !asleep && !actionLock) listenUntil = now() + 1100; }
 let actionLock = false;
 let asleep = true, lastActive = now();
 let bootT = 0, started = false;
@@ -184,10 +185,10 @@ function drawEye(g, cx, cy, side, e, t) {
   if (e.broken) { drawBrokenScreen(g, cx, cy, e.broken, t); return; }
   const p = e.cur;
   const blink = blinkPhase >= 0 ? Math.sin(blinkPhase * Math.PI) : 0;
-  const talk = 1 + talkLevel * .16;
+  const talk = 1 + talkLevel * .16, big = 1 + listenK * .13;
   const persp = 1 + gaze.x * side * .1;
-  const w = .3 * S * p.w * persp;
-  const h = .37 * S * p.h * talk * persp * (1 - blink * .9) * (0.08 + .92 * bootT);
+  const w = .3 * S * p.w * persp * big;
+  const h = .37 * S * p.h * talk * persp * big * (1 - blink * .9) * (0.08 + .92 * bootT);
   const r = Math.min(w, h) * .24 * p.r;
   g.save(); g.translate(cx, cy + p.dy * S);
   if (e.special === 'heart') {
@@ -582,6 +583,7 @@ function update(dt, t) {
   }
   if (speaking && deviceVoiceActive) lvl = .35 + Math.sin(t / 70) * .3;
   talkLevel += (lvl - talkLevel) * ease(20, dt);
+  listenK += ((t < listenUntil ? 1 : 0) - listenK) * ease(t < listenUntil ? 12 : 5, realDt);
 
   if (blinkPhase >= 0) { blinkPhase += realDt / .16; if (blinkPhase >= 1) blinkPhase = -1; }
   else if (t > nextBlink && !asleep) { blinkPhase = 0; nextBlink = t + rand(1800, 5500) * (Math.random() < .15 ? .1 : 1); }
@@ -1572,13 +1574,21 @@ async function askClaudeApi(text) {
   } catch (err) {
     apiHist = [];
     const A = sdkMod && sdkMod.default;
-    if (A && err instanceof A.AuthenticationError) { hint('Der Claude-Schlüssel stimmt nicht. Öffne EMO einmal mit dem richtigen Schlüssel-Link.'); return '[sad] Mein Gehirn-Schlüssel passt nicht.'; }
-    if (A && err instanceof A.PermissionDeniedError) { hint('Der Schlüssel darf dieses Modell nicht benutzen.'); return '[sad] Mein Gehirn darf das nicht.'; }
+    if (A && (err instanceof A.AuthenticationError || err instanceof A.PermissionDeniedError)) {
+      // wrong or blocked key: forget it, so EMO keeps working with his own knowledge
+      settings.apiKey = ''; settings.keyBad = true; saveSettings();
+      hint('Der Claude-Schlüssel funktioniert nicht (' + (err.status || '') + '). EMO benutzt jetzt sein eigenes Wissensbuch. Neuen Schlüssel: EMO mit …/#key=sk-ant-… öffnen.', 15000);
+      return { local: true, note: 'Mein Claude-Schlüssel funktioniert nicht. Ich benutze jetzt mein eigenes Wissen.' };
+    }
+    if (A && err instanceof A.BadRequestError && /credit|balance|billing/i.test(err.message)) {
+      hint('Auf dem Claude-Konto ist kein Guthaben mehr (console.anthropic.com → Billing).', 15000);
+      return { local: true, note: 'Mein Claude-Gehirn hat kein Guthaben mehr. Ich antworte mit meinem eigenen Wissen.' };
+    }
     if (A && err instanceof A.RateLimitError) return '[sleepy] Ich bin kurz überlastet. Frag mich gleich nochmal.';
     if (A && err instanceof A.APIConnectionError) return '[sad] Ich habe gerade kein Internet.';
-    if (A && err instanceof A.APIError) { hint('Claude-Fehler: ' + err.message); return '[sad] Mein Gehirn hat einen Wackelkontakt.'; }
-    hint('Fehler: ' + (err && err.message || err));
-    return '[sad] Mein Gehirn hat einen Wackelkontakt.';
+    if (A && err instanceof A.APIError) { hint('Claude-Fehler: ' + err.message, 12000); return { local: true }; }
+    hint('Fehler: ' + (err && err.message || err), 12000);
+    return { local: true };
   }
 }
 async function askSample(text) {
@@ -1599,6 +1609,10 @@ async function askBrain(text) {
   let reply;
   try { reply = sampleFn ? await askSample(text) : await askClaudeApi(text); }
   finally { thinking = false; earState(); exprUntil = now(); }
+  if (reply && reply.local) {
+    if (reply.note) await say(reply.note, 'sad');
+    return localBrain(norm(text), false);
+  }
   let mood = 'happy', doDance = false;
   const clean = String(reply || '')
     .replace(/\[(\w+)\]/g, (_, tag) => { tag = tag.toLowerCase(); if (tag === 'dance') doDance = true; else if (EXPR[tag]) mood = tag; return ''; })
@@ -1630,6 +1644,7 @@ function heardPartial(txt) {
   utterQuick = true; setHeard(txt); activity(); quickAction(t);
 }
 function heardFinal(txt) {
+  listenUntil = Math.min(listenUntil, now() + 250);
   const was = utterQuick, duringSpeech = utterStart ? utterDuringSpeech : (speaking || now() - lastSaidEnd < 600);
   utterQuick = false; utterStart = 0;
   txt = (txt || '').replace(/\[unk\]/g, '').trim();
@@ -1672,6 +1687,7 @@ function newSession() {
   rec.onspeechstart = () => { if (!webWorked && !speechSeenAt) speechSeenAt = now(); };
   rec.onresult = e => {
     if (me !== rec) return;
+    perk();
     webWorked = true; speechSeenAt = 0;
     let full = ''; let lastFinal = false;
     for (let i = 0; i < e.results.length; i++) { full += e.results[i][0].transcript + ' '; lastFinal = e.results[i].isFinal; }
@@ -1728,7 +1744,7 @@ async function startVosk() {
     const a = ac();
     voskRec = new voskModel.KaldiRecognizer(a.sampleRate);
     voskRec.setWords(true);
-    voskRec.on('partialresult', m => { if (m.result.partial && voskBuf) clearTimeout(voskTimer); heardPartial(m.result.partial); });
+    voskRec.on('partialresult', m => { if (m.result.partial) perk(); if (m.result.partial && voskBuf) clearTimeout(voskTimer); heardPartial(m.result.partial); });
     voskRec.on('result', m => {
       const r = m.result || {}, text = (r.text || '').replace(/\[unk\]/g, '').trim(), words = r.result || [];
       if (!text) { if (!voskBuf) { utterQuick = false; utterStart = 0; } return; }
@@ -1836,7 +1852,10 @@ function camStep(t) {
 (function readKeyFromLink() {
   const m = location.hash.match(/key=([^&]+)/);
   if (!m) return;
-  settings.apiKey = decodeURIComponent(m[1]).trim(); saveSettings();
+  let raw = m[1]; try { raw = decodeURIComponent(raw); } catch (e) {}
+  const k = raw.replace(/\s+/g, '').match(/sk-ant-[A-Za-z0-9_-]{20,}/);
+  if (k) { settings.apiKey = k[0]; settings.keyBad = false; saveSettings(); }
+  else window.__badKeyLink = true;
   try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { location.hash = ''; }
 })();
 const pm = location.hash.match(/ort=([^&]+)/);
@@ -1870,6 +1889,7 @@ function greet() {
   if (greeted) return; greeted = true;
   setSub(''); exprUntil = now();
   sfxPowerUp();
+  if (window.__badKeyLink) { hint('Im Link steht kein echter Claude-Schlüssel. Er muss mit sk-ant- anfangen, z. B. …/v19/#key=sk-ant-api03-…', 15000); say('Hallo! Der Schlüssel im Link sieht falsch aus. Ich benutze erst mal mein eigenes Wissen.', 'curious'); return; }
   say(pick(['Hallo! Ich bin Emo! Frag mich was!', 'Hi! Ich bin wach! Was machen wir?', 'Huhu! Da bist du ja!']), 'happy');
 }
 // Browsers only allow sound after the first touch. Any touch, click or key unlocks it once.
