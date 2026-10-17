@@ -48,6 +48,7 @@ html, body { height: 100%; margin: 0; background: #000; color: var(--ink); font-
 
 
 <script src="brain/wissen.js"></script>
+<script src="brain/wissen2.js"></script>
 <script>
 'use strict';
 /* ================= Setup ================= */
@@ -1134,7 +1135,7 @@ function mathAnswer(raw) {
 }
 
 /* ================= What EMO hears ================= */
-const BANG = /\b(peng|päng|pang|beng|bang|bäng|boom|bumm|bum|bam|pow|pew|piu|paff|puff|kawumm)\b/;
+const BANG = /\b(peng|päng|pang|beng|bang|bäng|bänk|pänk|bäm|päm|boom|bumm|bum|bam|pow|pew|piu|paff|puff|kawumm)\b/;
 const HANDS_UP = /\b(h(ä|a|e)nde?|arme)\s*(nach\s*)?(hoch|oben|in die luft)|\bhands? up\b|\büberfall\b/;
 function lev(a, b) {
   const m = a.length, n = b.length; let prev = Array.from({ length: n + 1 }, (_, j) => j);
@@ -1272,7 +1273,15 @@ function beQuiet() {
   setExpr('sad', 1200); lookAt(0, .3, 1500);
 }
 const handsUpSaid = t => HANDS_UP.test(t) || fuzzyHandsUp(t);
-const bangSaid = t => BANG.test(t) || (hands.target > .5 && fuzzyBang(t));
+// With the hands up EMO waits for the shot, so a short word that only sounds like "Bang" counts too
+// (the phone often writes it as "Bank", "Ben", "Pen", "Band", "Bing" …).
+const BANG_LIKE = ['peng', 'beng', 'bang', 'pang', 'bumm', 'boom', 'bam', 'bank', 'band', 'ben', 'pen', 'penn', 'bing', 'ping', 'pong', 'bong', 'bern', 'bem', 'beng'];
+function shortBang(t) {
+  const w = t.split(' ').map(simp).filter(x => x && !/^(emo|hey|und|ja|jetzt|so|mal|los)$/.test(x));
+  if (!w.length || w.length > 3) return false;
+  return w.every(x => x.length >= 2 && x.length <= 6 && /^[pb]/.test(x) && BANG_LIKE.some(k => lev(x, k) <= (x.length <= 4 ? 1 : 2)));
+}
+const bangSaid = t => BANG.test(t) || (hands.target > .5 && (fuzzyBang(t) || shortBang(t)));
 function quickAction(t) {
   if (QUIET.test(t)) { beQuiet(); return true; }
   if (HANDS_DOWN.test(t)) { lowerHands(); return true; }
@@ -1417,7 +1426,7 @@ async function wikiAnswer(t) {
   finally { thinking = false; exprUntil = now(); }
 }
 // EMOs Wissensbuch (brain/wissen.js): finds the fact that fits the question best.
-const KB_STOP = new Set('was wer wie wo wann warum wieso weshalb welche welcher welches ist sind war waren der die das den dem des ein eine einen einem einer eines von vom zum zur im in an auf aus mit und oder ich mir mich er sie es mal bitte erzähl erzähle erzählen sag sage kennst weißt weisst über gibt hat haben hast kann können kannst denn eigentlich so noch auch emo viel viele wieviel wie viele etwas was nicht man da hier dort sehr ganz bisschen'.split(' '));
+const KB_STOP = new Set('schnell was wer wie wo wann warum wieso weshalb welche welcher welches ist sind war waren der die das den dem des ein eine einen einem einer eines von vom zum zur im in an auf aus mit und oder ich mir mich er sie es mal bitte erzähl erzähle erzählen sag sage kennst weißt weisst über gibt hat haben hast kann können kannst denn eigentlich so noch auch emo viel viele wieviel wie viele etwas was nicht man da hier dort sehr ganz bisschen'.split(' '));
 function kbTokens(t) { return t.split(' ').filter(w => w.length > 1 && !KB_STOP.has(w)); }
 // compare by sound, so misheard spellings still match ("gepaart" = "gepard", "elefannt" = "elefant")
 const phon = w => w.replace(/ä/g, 'e').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/ß/g, 's').replace(/ph/g, 'f').replace(/v/g, 'f').replace(/dt/g, 't').replace(/d\b/g, 't').replace(/([aeiou])h/g, '$1').replace(/(.)\1+/g, '$1');
@@ -1426,7 +1435,7 @@ function kbHit(tokens, key) {
   return tokens.some(w => {
     if (w === key) return true;
     const P = phon(w);
-    return P === K || (K.length >= 4 && P.startsWith(K)) || (P.length >= 5 && K.startsWith(P)) || (K.length >= 5 && P.length >= 5 && lev(P, K) <= 1);
+    return P === K || (K.length >= 4 && P.startsWith(K)) || (P.length >= 5 && K.startsWith(P) && K.length - P.length <= 3) || (K.length >= 5 && P.length >= 5 && lev(P, K) <= 1);
   });
 }
 function knowledgeAnswer(t) {
@@ -1439,6 +1448,9 @@ function knowledgeAnswer(t) {
       if (new RegExp('(^| )' + land.replace(/-/g, '[- ]?') + 's?( |$)').test(t)) { const L = land.split('-').map(x => x[0].toUpperCase() + x.slice(1)).join('-'); return `Die Hauptstadt von ${L === 'Usa' ? 'den USA' : L} ist ${stadt}.`; }
     }
   }
+  // a few questions are only stop words plus one noun
+  if (/wie ?viele? menschen (gibt es|leben|sind|wohnen|existieren)( (es|auf|in) (der|unserer) (welt|erde))?$|^wie viele menschen$/.test(t)) return 'Auf der Erde leben ungefähr 8,2 Milliarden Menschen (Stand 2025). Und jeden Tag werden es über 200.000 mehr.';
+  if (/wie ?viele? länder (gibt es|sind|hat die (welt|erde))/.test(t)) return 'Es gibt ungefähr 195 Länder auf der Welt. 193 davon sind in den Vereinten Nationen.';
   let best = null, bestScore = 0;
   for (const e of window.WISSEN) {
     const [subject, ...hints] = e.k.split(' ');
@@ -1448,7 +1460,7 @@ function knowledgeAnswer(t) {
     if (!parts) continue;
     const hit = hints.filter(h => kbHit(tok, h)).length;
     const score = 10 + parts * 2 + hit * 3 - (hints.length - hit) * .5;
-    if (score > bestScore) { bestScore = score; best = e; }
+    if (score + (e.neu ? .1 : 0) > bestScore) { bestScore = score + (e.neu ? .1 : 0); best = e; } // on a tie the newer fact (wissen2.js) wins
   }
   return best ? best.a : null;
 }
