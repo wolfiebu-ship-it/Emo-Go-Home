@@ -132,7 +132,11 @@ let shards = [], tears = [], crying = 0, nextTear = 0;
 let timeScale = 1, timeTarget = 1, glitch = 0, trail = [], lastTrail = 0, sweat = null;
 let bullets = [], screenCracks = [], sparks = [];
 let thinking = false, speaking = false, talkLevel = 0, listenUntil = 0, listenK = 0;
-function perk() { if (!speaking && !asleep && !actionLock) listenUntil = now() + 1100; }
+function perk(txt) { if (!speaking && !asleep && !actionLock && (txt === undefined || addressed(txt))) listenUntil = now() + 1100; }
+// EMO only follows you when you call him: "Hey Emo, …" (or right after "Hey Emo" alone, for a few seconds)
+const WAKE = /(^|\s)(hey|hei|he|ey|hallo|hi|ok|okay|na)?\s*(emo|emma|ema|nemo|imo|e-mo|e mo|elmo|emu|emmo|ehmo|immo|amo|emos|hemo|heimo|ihmo|aemo|emoh)(\s|$)|^(hey|hei|he) mo(\s|$)/;
+let wakeUntil = 0;
+function addressed(txt) { const r = String(txt || '').toLowerCase().replace(/[!?.,;:"'„“]/g, ' ').replace(/\s+/g, ' ').trim(); return WAKE.test(r) || now() < wakeUntil; }
 let actionLock = false;
 let asleep = true, lastActive = now();
 let bootT = 0, started = false;
@@ -584,6 +588,7 @@ function update(dt, t) {
   }
   if (speaking && deviceVoiceActive) lvl = .35 + Math.sin(t / 70) * .3;
   talkLevel += (lvl - talkLevel) * ease(20, dt);
+  if (t < wakeUntil && !speaking) listenUntil = Math.max(listenUntil, t + 150);
   listenK += ((t < listenUntil ? 1 : 0) - listenK) * ease(t < listenUntil ? 12 : 5, realDt);
 
   if (blinkPhase >= 0) { blinkPhase += realDt / .16; if (blinkPhase >= 1) blinkPhase = -1; }
@@ -909,9 +914,16 @@ function dropEcho(t) {
   for (let k = 0; k < w.length - 1; k++) { const rest = w.slice(k).join(' '); if (echoScore(rest) < .34) return rest; }
   return '';
 }
+// You start talking while EMO talks: he stops at once. Only words that are clearly his own voice coming back are ignored.
+const clean = s => String(s || '').toLowerCase().replace(/[!?.,;:"'„“…]/g, ' ').replace(/\s+/g, ' ').trim();
 function canBarge(t) {
+  t = clean(t);
+  if (!speaking || actionLock || now() - speakStart < 250 || !t) return false;
+  if (WAKE.test(t)) return true;
   const w = t.split(' ').filter(x => x.length > 1);
-  return speaking && !actionLock && now() - speakStart > 350 && w.length >= 2 && t.replace(/ /g, '').length >= 7 && echoScore(t) < .34;
+  if (w.length >= 2) return t.replace(/ /g, '').length >= 5 && echoScore(norm(t)) < .34;
+  if (w.length === 1 && w[0].length >= 3) return !clean(lastSaid).split(' ').some(x => x === w[0] || (x.length >= 4 && lev(x, w[0]) <= 1));
+  return false;
 }
 function bargeIn() {
   stopVoice(true); sayToken++; speaking = false; lastSaidEnd = now();
@@ -1156,7 +1168,7 @@ const HANDS_DOWN = /\b(h(ä|a|e)nde?|arme)\s*(wieder\s*)?(runter|nach unten)/;
 const norm = s => {
   let t = s.toLowerCase().replace(/[!?.,;:"'„“]/g, ' ').replace(/\s+/g, ' ').trim();
   // "hey Emo, sei leise" -> "sei leise"; a plain "hallo Emo" stays a greeting
-  const m = t.match(/^(hey |hallo |hi |ok |okay |du |na )?(emo|emma|ema|nemo|imo|e-mo|elmo|emu|emmo|ehmo|immo|amo|emos)\b\s*(.*)$/);
+  const m = t.match(/^(hey |hei |he |ey |hallo |hi |ok |okay |du |na )?(emo|emma|ema|nemo|imo|e-mo|e mo|elmo|emu|emmo|ehmo|immo|amo|emos|hemo|heimo|ihmo|aemo|emoh|mo)\b\s*(.*)$/);
   if (m) t = m[3] || (m[1] && /hallo|hey|hi/.test(m[1]) ? 'hallo' : '');
   return t.trim();
 };
@@ -1295,8 +1307,15 @@ function isEcho(t) {
 const FILLER = /^((ach|achso|ach so|aso|aha|ah|oh|okay|ok|okey|ja|jaa|jo|jep|nein|nö|hm+|äh+|ähm|mhm|so|also|cool|krass|nice|alles klad|alles klar|na|naja|egal|und|tja|aha okay|ja ja|ach so okay|ok cool)\s*)+$/;
 async function handleInput(raw) {
   const t = norm(raw);
-  if (!t && /\b(emo|emma|nemo)\b/i.test(raw) && !actionLock && !thinking) { await wake(true); return say(pick(['Ja? Ich höre!', 'Hm? Was gibt\'s?', 'Hier bin ich!']), 'curious'); }
+  if (/^(hey|hei|he|ey|ok|okay|na|du)?\s*(emo|emma|ema|nemo|imo|e-mo|e mo|elmo|emu|emmo|ehmo|immo|amo|emos|hemo|heimo|ihmo|aemo|emoh|mo)$/.test(clean(raw)) && !actionLock && !thinking) {
+    await wake(true); wakeUntil = now() + 12000;
+    await say(pick(['Ja?', 'Ja? Ich höre!', 'Hm?', 'Hier bin ich!']), 'curious');
+    wakeUntil = now() + 9000; return;
+  }
   if (!t || t.length < 2) return;
+  // not called by name: EMO ignores it (only "Bang" with raised hands always works)
+  if (!addressed(raw)) return;
+  wakeUntil = 0;
   if (isEcho(t)) return;
   if (FILLER.test(t)) { activity(); setExpr('happy', 900); return; }
   setHeard(raw); activity();
@@ -1647,12 +1666,13 @@ const QUICK = t => QUIET.test(t) || handsUpSaid(t) || bangSaid(t) || HANDS_DOWN.
 
 // shared by both recognizers
 let utterQuick = false, utterStart = 0, utterDuringSpeech = false;
+function allowedQuick(raw, t) { return addressed(raw) || (hands.target > .5 && bangSaid(t)); }
 function heardPartial(txt) {
   const t = norm(txt || '');
   if (!t) return;
   if (!utterStart) { utterStart = now(); utterDuringSpeech = speaking || now() - lastSaidEnd < 250; }
-  if (utterDuringSpeech && canBarge(t.split(' ').slice(-5).join(' '))) { bargeIn(); utterDuringSpeech = false; }
-  if (utterQuick || !QUICK(t) || isEcho(t)) return;
+  if (utterDuringSpeech && canBarge(clean(txt).split(' ').slice(-5).join(' '))) { bargeIn(); utterDuringSpeech = false; }
+  if (utterQuick || !QUICK(t) || isEcho(t) || !allowedQuick(txt, t)) return;
   utterQuick = true; setHeard(txt); activity(); quickAction(t);
 }
 function heardFinal(txt) {
@@ -1662,7 +1682,7 @@ function heardFinal(txt) {
   txt = (txt || '').replace(/\[unk\]/g, '').trim();
   if (!txt || was) return;
   const t = norm(txt);
-  if (QUICK(t) && !isEcho(t)) { setHeard(txt); activity(); quickAction(t); return; }
+  if (QUICK(t) && !isEcho(t)) { if (allowedQuick(txt, t)) { wakeUntil = 0; setHeard(txt); activity(); quickAction(t); } return; }
   // something that started while EMO was talking: keep only the part that isn't EMO hearing himself
   if (duringSpeech && echoScore(t) >= .34) { txt = dropEcho(t); if (!txt) return; }
   handleInput(txt);
@@ -1699,15 +1719,15 @@ function newSession() {
   rec.onspeechstart = () => { if (!webWorked && !speechSeenAt) speechSeenAt = now(); };
   rec.onresult = e => {
     if (me !== rec) return;
-    perk();
     webWorked = true; speechSeenAt = 0;
     let full = ''; let lastFinal = false;
     for (let i = 0; i < e.results.length; i++) { full += e.results[i][0].transcript + ' '; lastFinal = e.results[i].isFinal; }
     let fresh = full.slice(consumed).trim();
     if (!fresh) return;
+    perk(fresh);
     if (speaking || now() - lastSaidEnd < 1200) {
       const words = fresh.split(/\s+/), tail = words.slice(-5).join(' ');
-      if (canBarge(norm(tail)) || (!speaking && echoScore(norm(tail)) < .34)) {
+      if (canBarge(tail) || (!speaking && echoScore(norm(tail)) < .34)) {
         // you are talking: EMO goes quiet and keeps only your words
         if (speaking) bargeIn();
         const at = full.lastIndexOf(tail); if (at >= consumed && words.length > 5) { consumed = at; fresh = tail; }
@@ -1756,7 +1776,7 @@ async function startVosk() {
     const a = ac();
     voskRec = new voskModel.KaldiRecognizer(a.sampleRate);
     voskRec.setWords(true);
-    voskRec.on('partialresult', m => { if (m.result.partial) perk(); if (m.result.partial && voskBuf) clearTimeout(voskTimer); heardPartial(m.result.partial); });
+    voskRec.on('partialresult', m => { if (m.result.partial) perk(m.result.partial); if (m.result.partial && voskBuf) clearTimeout(voskTimer); heardPartial(m.result.partial); });
     voskRec.on('result', m => {
       const r = m.result || {}, text = (r.text || '').replace(/\[unk\]/g, '').trim(), words = r.result || [];
       if (!text) { if (!voskBuf) { utterQuick = false; utterStart = 0; } return; }

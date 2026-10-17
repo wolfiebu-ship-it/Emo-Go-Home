@@ -4,9 +4,9 @@ Ein kleiner Roboter auf dem Bildschirm, inspiriert von EMO. Man sieht nur seine 
 
 ## Öffnen
 
-**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v20/**
+**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v21/**
 
-Jede neue Version bekommt einen eigenen Link (`v20`, `v21`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 21`.
+Jede neue Version bekommt einen eigenen Link (`v21`, `v22`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 22`.
 
 Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gibt keine Knöpfe und keine Einstellungen.
 
@@ -19,11 +19,13 @@ Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gib
 
 **Mit Claude-Gehirn** redet er über alles und sucht im Internet. Dafür EMO einmal mit diesem Link öffnen (Schlüssel von https://console.anthropic.com/settings/keys):
 
-`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v20/#key=DEIN-SCHLÜSSEL`
+`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v21/#key=DEIN-SCHLÜSSEL`
 
 Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse entfernt. Er muss mit `sk-ant-` anfangen. Ist er falsch, gesperrt oder ist kein Guthaben mehr auf dem Konto, sagt EMO das einmal, zeigt den Grund kurz unten an und antwortet danach mit seinem eigenen Wissensbuch weiter. Mit `#ort=Kassel` kann man den Wohnort für das Wetter ändern (Standard: Frankfurt am Main).
 
 ## Was man sagen kann
+
+**Wichtig: EMO hört nur, wenn man ihn ruft.** Jeder Befehl und jede Frage fängt mit **„Hey Emo“** an, zum Beispiel „Hey Emo, wie spät ist es?“. Man kann auch nur „Hey Emo“ sagen: Er antwortet „Ja?“, macht große Augen und wartet ein paar Sekunden auf deinen Befehl. Ohne „Hey Emo“ ignoriert er alles. Nur „Bang“ geht immer, wenn seine Hände schon oben sind. Wenn du redest, während EMO spricht, ist er sofort still.
 
 | Du sagst oder machst | EMO macht |
 | --- | --- |
@@ -37,7 +39,7 @@ Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse en
 | „Gute Nacht“ / „Wach auf“ | schläft ein / wacht auf |
 | „Emo, mach Untertitel an“ / „Untertitel aus“ | zeigt an, was EMO sagt und was er gehört hat (normalerweise aus) |
 | Mit EMO reden | seine Augen werden etwas größer: er hört zu |
-| Reinreden, während EMO spricht | er wird leise und hört dir zu |
+| Reinreden, während EMO spricht | er ist sofort still |
 | Geräusche, Gemurmel, halbe Sätze | EMO bleibt ruhig und lässt dich ausreden, statt irgendwas zu sagen |
 | „Was hast du gesagt?“, „Sag das nochmal“, „Wie bitte?“ | wiederholt seinen letzten Satz |
 | Gerät schütteln | Kreisel-Augen, wird grün, Zunge hängt raus und wackelt, Schluckauf, ihm wird übel (am iPhone/iPad einmal auf EMO tippen und bei „Bewegung und Ausrichtung“ auf „Erlauben“ tippen) |
