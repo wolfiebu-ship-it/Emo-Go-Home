@@ -1053,13 +1053,14 @@ function playPcm(pcm, rate) {
   return new Promise(res => { src.onended = res; setTimeout(res, dur * 1000 + 400); }).then(() => { if (currentVoiceSrc === src) currentVoiceSrc = null; });
 }
 const ttsCache = new Map();
-async function warmPhrases() { for (const p of ['Ja?', 'Hm?', 'Ja? Ich höre!', 'Hier bin ich!']) { try { if (!ttsCache.has(p)) ttsCache.set(p, await synthChild(p)); } catch (e) {} } }
+const READY = ['Ja?', 'Hm?', 'Ja? Ich höre!', 'Hier bin ich!', 'Okay! Sprich nach dem Piep.', 'Super! Ich habe deine Stimme gespeichert.', 'Okay, abgebrochen.', 'Alles Gute zum Geburtstag!', 'Bitte hör auf.', 'Ich habe noch keine Aufnahme.'];
+async function warmPhrases() { for (const p of READY) { try { if (!ttsCache.has(p)) ttsCache.set(p, await synthChild(p)); } catch (e) {} } }
 async function speakChild(text, my) {
   if (!(await loadVoice())) return speakDevice(text);
   if (ttsCache.get(text)) { if (my === sayToken) await playPcm(ttsCache.get(text), piper.cfg.audio.sample_rate); return; }
-  const parts = (text.match(/[^.!?…]+[.!?…]*/g) || [text]).map(t => t.trim()).filter(Boolean);
-  const c = parts[0].indexOf(',', 15);
-  if (parts[0].length > 60 && c > 0 && c < parts[0].length - 15) parts.splice(0, 1, parts[0].slice(0, c + 1), parts[0].slice(c + 1).trim());
+  // phones compute slowly: one piece for short texts (no pause between sentences), two pieces for long ones
+  const sents = (text.match(/[^.!?…]+[.!?…]*/g) || [text]).map(t => t.trim()).filter(Boolean);
+  const parts = text.length <= 150 || sents.length < 2 ? [text] : [sents[0], sents.slice(1).join(' ')];
   const rate = piper.cfg.audio.sample_rate;
   let next = synthChild(parts[0]);
   for (let i = 0; i < parts.length; i++) {
@@ -2011,7 +2012,8 @@ async function recordVoice() {
   if (recording || actionLock) return;
   actionLock = true; recordBusy = true; recCancel = false;
   try {
-    await say('Okay! Wenn es piept, kannst du sprechen. Du hast bis zu einer Minute Zeit. Wenn du fertig bist, sei ein paar Sekunden still. Tipp mich an, wenn du abbrechen willst.', 'happy');
+    hint('Nach dem Piep sprechen (bis zu 1 Minute). Fertig: ein paar Sekunden still sein. Abbrechen: EMO antippen.', 9000);
+    await say('Okay! Sprich nach dem Piep.', 'happy');
     if (recCancel) return say('Okay, abgebrochen.', 'happy');
     // the device's recognizer has to let go of the microphone while we record
     recording = true;
@@ -2040,7 +2042,7 @@ async function recordVoice() {
     recording = false; recLevel = 0; beep(false);
     if (listenMode === 'web') newSession();
     // tapped during the recording: nothing is saved
-    if (recCancel) return say('Okay, abgebrochen. Ich habe nichts gespeichert.', 'happy');
+    if (recCancel) { hint('Nichts gespeichert.', 3000); return say('Okay, abgebrochen.', 'happy'); }
     if (started < 0) return say('Ich habe nichts gehört. Versuch es nochmal und sprich etwas lauter.', 'curious');
     // keep a little before the first word, cut the silence at the end, make it nice and loud
     const per = chunks[0].length, from = Math.max(0, started - Math.round(.25 * a.sampleRate / per));
@@ -2051,7 +2053,8 @@ async function recordVoice() {
     myVoice = { rate: a.sampleRate, pcm };
     try { await kvSet('myVoice', myVoice); } catch (e) {}
     await wait(300);
-    return say('Super! Ich habe deine Stimme gespeichert. Wenn du sie hören willst, sag einfach: Ton abspielen.', 'happy');
+    hint('Abspielen: „Hey Emo, Ton abspielen“', 6000);
+    return say('Super! Ich habe deine Stimme gespeichert.', 'happy');
   } catch (e) {
     hint('Aufnahme ging nicht: ' + (e && e.message || e), 10000);
     return say('Oh, das Aufnehmen hat nicht geklappt. Darf ich das Mikrofon benutzen?', 'sad');

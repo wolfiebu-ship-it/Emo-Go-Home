@@ -4,9 +4,9 @@ Ein kleiner Roboter auf dem Bildschirm, inspiriert von EMO. Man sieht nur seine 
 
 ## Öffnen
 
-**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v34/**
+**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v35/**
 
-Jede neue Version bekommt einen eigenen Link (`v34`, `v35`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 35`.
+Jede neue Version bekommt einen eigenen Link (`v35`, `v36`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 36`.
 
 Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gibt keine Knöpfe und keine Einstellungen.
 
@@ -20,7 +20,7 @@ Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gib
 
 **Mit Claude-Gehirn** redet er über alles und sucht im Internet. Dafür EMO einmal mit diesem Link öffnen (Schlüssel von https://console.anthropic.com/settings/keys):
 
-`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v34/#key=DEIN-SCHLÜSSEL`
+`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v35/#key=DEIN-SCHLÜSSEL`
 
 Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse entfernt. Er muss mit `sk-ant-` anfangen. Ist er falsch, gesperrt oder ist kein Guthaben mehr auf dem Konto, sagt EMO das einmal, zeigt den Grund kurz unten an und antwortet danach mit seinem eigenen Wissensbuch weiter. Mit `#ort=Kassel` kann man den Wohnort für das Wetter ändern (Standard: Frankfurt am Main).
 
