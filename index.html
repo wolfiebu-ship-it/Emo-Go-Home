@@ -132,13 +132,39 @@ let shards = [], tears = [], crying = 0, nextTear = 0;
 let timeScale = 1, timeTarget = 1, glitch = 0, trail = [], lastTrail = 0, sweat = null;
 let bullets = [], screenCracks = [], sparks = [];
 let thinking = false, speaking = false, talkLevel = 0, listenUntil = 0, listenK = 0;
-function perk(txt) { if (!speaking && !asleep && !actionLock && (txt === undefined || addressed(txt))) listenUntil = now() + 1100; }
+function perk(txt) {
+  if (speaking || asleep || actionLock || !(txt === undefined || addressed(txt))) return;
+  listenUntil = now() + 1400;
+  const c = clean(txt || ''); if (txt !== undefined && (WAKE.test(c) || wakeAt(c))) wakeCue();
+}
 // EMO only follows you when you call him: "Hey Emo, …" (or right after "Hey Emo" alone, for a few seconds)
 const WAKE = /(^|\s)(hey|hei|he|ey|hallo|hi|ok|okay|na)?\s*(emo|emma|ema|nemo|imo|e-mo|e mo|elmo|emu|emmo|ehmo|immo|amo|emos|hemo|heimo|ihmo|aemo|emoh)(\s|$)|^(hey|hei|he) mo(\s|$)/;
 let wakeUntil = 0;
 // "Hey Emo …" is always you, never EMO hearing himself (he never says "Hey Emo")
-const calledByYou = raw => /(^|\s)(hey|hei|he|ey|ok|okay) (emo|emma|ema|nemo|imo|elmo|emu|emmo|ehmo|immo|amo|mo)(\s|$)|^(hemo|heimo)(\s|$)/.test(clean(raw)) && !/hey emo/i.test(lastSaid);
-function addressed(txt) { const r = String(txt || '').toLowerCase().replace(/[!?.,;:"'„“]/g, ' ').replace(/\s+/g, ' ').trim(); return WAKE.test(r) || now() < wakeUntil; }
+const calledByYou = raw => (/(^|\s)(hey|hei|he|ey|ok|okay) (emo|emma|ema|nemo|imo|elmo|emu|emmo|ehmo|immo|amo|mo)(\s|$)|^(hemo|heimo)(\s|$)/.test(clean(raw)) || (wakeAt(clean(raw)) === 2 && !/^(hallo|hi|du|na)$/.test(clean(raw).split(' ')[0]))) && !/hey emo/i.test(lastSaid);
+function addressed(txt) { const r = String(txt || '').toLowerCase().replace(/[!?.,;:"'„“]/g, ' ').replace(/\s+/g, ' ').trim(); return WAKE.test(r) || wakeAt(r) > 0 || now() < wakeUntil; }
+// The phone often writes "Emo" wrong ("Emma", "Elmo", "Hemo", "Imo" …): a word that sounds like it,
+// at the start or right after "hey", counts. Returns how many words to cut off (0 = not called).
+const WAKE_NAMES = ['emo', 'emma', 'elmo', 'nemo', 'hemo', 'heimo', 'imo', 'emu', 'ehmo', 'emmo', 'amo', 'immo'];
+const WAKE_NOT = new Set(['oma', 'opa', 'eva', 'demo', 'memo', 'ehm', 'em', 'emm', 'hm', 'echo', 'ja', 'mo', 'amor']);
+function isWakeName(w) {
+  w = simp(w || '');
+  if (w.length < 2 || w.length > 6 || WAKE_NOT.has(w)) return false;
+  return WAKE_NAMES.some(n => w === n || (w.length >= 3 && lev(w, n) <= 1));
+}
+function wakeAt(t) {
+  const w = t.split(' ');
+  if (/^(hey|hei|hej|he|ey|hallo|hi|ok|okay|na|du)$/.test(w[0]) && isWakeName(w[1])) return 2;
+  if (isWakeName(w[0])) return 1;
+  return 0;
+}
+// "Hey Emo" was heard: a little sound and big eyes, so you know he listens
+let wakeCued = false, popT = 0;
+function wakeCue() {
+  if (wakeCued || asleep) return; wakeCued = true; popT = now();
+  listenUntil = now() + 1600; lookAt(0, -.15, 1500);
+  try { const t = ac().currentTime; tone(880, 990, t, .07, 'sine', .12); tone(1320, 1480, t + .07, .09, 'sine', .1); } catch (e) {}
+}
 let actionLock = false;
 let asleep = true, lastActive = now();
 let bootT = 0, started = false;
@@ -192,7 +218,7 @@ function drawEye(g, cx, cy, side, e, t) {
   if (e.broken) { drawBrokenScreen(g, cx, cy, e.broken, t); return; }
   const p = e.cur;
   const blink = blinkPhase >= 0 ? Math.sin(blinkPhase * Math.PI) : 0;
-  const talk = 1 + talkLevel * .16, big = 1 + listenK * .13;
+  const pk = (now() - popT) / 380, talk = 1 + talkLevel * .16, big = 1 + listenK * .27 + (pk < 1 ? .1 * Math.sin(pk * Math.PI) : 0);
   const persp = 1 + gaze.x * side * .1;
   const w = .3 * S * p.w * persp * big;
   const h = .37 * S * p.h * talk * persp * big * (1 - blink * .9) * (0.08 + .92 * bootT);
@@ -972,7 +998,7 @@ const clean = s => String(s || '').toLowerCase().replace(/[!?.,;:"'„“…]/g,
 function canBarge(t) {
   t = clean(t);
   if (!speaking || actionLock || now() - speakStart < 250 || !t) return false;
-  if (WAKE.test(t)) return true;
+  if (WAKE.test(t) || wakeAt(t)) return true;
   // your recorded message plays: the microphone hears it too, so only a clear "Stopp" ends it
   if (playingMine) return /\b(stopp?|aufhören|hör auf|aus|halt)\b/.test(t);
   const w = t.split(' ').filter(x => x.length > 1);
@@ -1226,6 +1252,7 @@ const norm = s => {
   // "hey Emo, sei leise" -> "sei leise"; a plain "hallo Emo" stays a greeting
   const m = t.match(/^(hey |hei |he |ey |hallo |hi |ok |okay |du |na )?(emo|emma|ema|nemo|imo|e-mo|e mo|elmo|emu|emmo|ehmo|immo|amo|emos|hemo|heimo|ihmo|aemo|emoh|mo)\b\s*(.*)$/);
   if (m) t = m[3] || (m[1] && /hallo|hey|hi/.test(m[1]) ? 'hallo' : '');
+  else { const k = wakeAt(t); if (k) { const w = t.split(' '); t = w.slice(k).join(' ') || (k === 2 && /hallo|hey|hi/.test(w[0]) ? 'hallo' : ''); } }
   return t.trim();
 };
 function subsSaid(t) { return /unter ?titel|untertitle/.test(t) || t.split(' ').some(w => w.length >= 8 && lev(simp(w), 'untertitel') <= 2); }
@@ -1367,7 +1394,8 @@ function isEcho(t) {
 const FILLER = /^((ach|achso|ach so|aso|aha|ah|oh|okay|ok|okey|ja|jaa|jo|jep|nein|nö|hm+|äh+|ähm|mhm|so|also|cool|krass|nice|alles klad|alles klar|na|naja|egal|und|tja|aha okay|ja ja|ach so okay|ok cool)\s*)+$/;
 async function handleInput(raw) {
   const t = norm(raw);
-  if (/^(hey|hei|he|ey|ok|okay|na|du)?\s*(emo|emma|ema|nemo|imo|e-mo|e mo|elmo|emu|emmo|ehmo|immo|amo|emos|hemo|heimo|ihmo|aemo|emoh|mo)$/.test(clean(raw)) && !actionLock && !thinking) {
+  const cr = clean(raw), crk = wakeAt(cr);
+  if ((/^(hey|hei|he|ey|ok|okay|na|du)?\s*(emo|emma|ema|nemo|imo|e-mo|e mo|elmo|emu|emmo|ehmo|immo|amo|emos|hemo|heimo|ihmo|aemo|emoh|mo)$/.test(cr) || (crk && crk === cr.split(' ').length && !/^(hallo|hi)$/.test(cr.split(' ')[0]))) && !actionLock && !thinking) {
     await wake(true); wakeUntil = now() + 12000;
     await say(pick(['Ja?', 'Ja? Ich höre!', 'Hm?', 'Hier bin ich!']), 'curious');
     wakeUntil = now() + 9000; return;
@@ -1737,6 +1765,7 @@ function heardPartial(txt) {
   utterQuick = true; setHeard(txt); activity(); quickAction(t);
 }
 function heardFinal(txt) {
+  wakeCued = false;
   if (recording) { utterQuick = false; utterStart = 0; return; }
   listenUntil = Math.min(listenUntil, now() + 250);
   const was = utterQuick, duringSpeech = utterStart ? utterDuringSpeech : (speaking || now() - lastSaidEnd < 600);
@@ -1762,7 +1791,7 @@ function fallbackToVosk() {
   try { r && r.abort(); } catch (e) {}
   readyEars = false; startVosk().then(earsReady);
 }
-function restartRec() { const r = rec; rec = null; try { r && r.abort(); } catch (e) {} restartTimer = setTimeout(newSession, 200); }
+function restartRec() { const r = rec; rec = null; try { r && r.abort(); } catch (e) {} restartTimer = setTimeout(newSession, 80); }
 
 /* --- Web Speech API --- */
 function startMic() {
@@ -1811,7 +1840,7 @@ function newSession() {
     // ending again and again without ever hearing anything means it doesn't work here
     const t = now(); webEnds = webEnds.filter(x => t - x < 15000); webEnds.push(t);
     if (!webWorked && webEnds.length >= 6) return fallbackToVosk();
-    restartTimer = setTimeout(newSession, 250);
+    restartTimer = setTimeout(newSession, 100);
   };
   try { rec.start(); } catch (e) { restartTimer = setTimeout(newSession, 1000); }
 }

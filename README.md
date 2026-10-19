@@ -4,9 +4,9 @@ Ein kleiner Roboter auf dem Bildschirm, inspiriert von EMO. Man sieht nur seine 
 
 ## Öffnen
 
-**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v23/**
+**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v24/**
 
-Jede neue Version bekommt einen eigenen Link (`v23`, `v24`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 24`.
+Jede neue Version bekommt einen eigenen Link (`v24`, `v25`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 25`.
 
 Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gibt keine Knöpfe und keine Einstellungen.
 
@@ -19,7 +19,7 @@ Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gib
 
 **Mit Claude-Gehirn** redet er über alles und sucht im Internet. Dafür EMO einmal mit diesem Link öffnen (Schlüssel von https://console.anthropic.com/settings/keys):
 
-`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v23/#key=DEIN-SCHLÜSSEL`
+`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v24/#key=DEIN-SCHLÜSSEL`
 
 Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse entfernt. Er muss mit `sk-ant-` anfangen. Ist er falsch, gesperrt oder ist kein Guthaben mehr auf dem Konto, sagt EMO das einmal, zeigt den Grund kurz unten an und antwortet danach mit seinem eigenen Wissensbuch weiter. Mit `#ort=Kassel` kann man den Wohnort für das Wetter ändern (Standard: Frankfurt am Main).
 
@@ -38,7 +38,7 @@ Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse en
 | „Tanz mal“, „Sing was“ | tanzt oder singt |
 | „Gute Nacht“ / „Wach auf“ | schläft ein / wacht auf |
 | „Emo, mach Untertitel an“ / „Untertitel aus“ | zeigt an, was EMO sagt und was er gehört hat (normalerweise aus) |
-| Mit EMO reden | seine Augen werden etwas größer: er hört zu |
+| „Hey Emo …“ | ein kurzer Piep-Ton, seine Augen werden deutlich größer und schauen dich an: er hört zu. Auch wenn das Handy „Emma“, „Elmo“, „Hemo“ oder „Imo“ versteht |
 | Reinreden, während EMO spricht | er ist sofort still |
 | Geräusche, Gemurmel, halbe Sätze | EMO bleibt ruhig und lässt dich ausreden, statt irgendwas zu sagen |
 | „Was hast du gesagt?“, „Sag das nochmal“, „Wie bitte?“ | wiederholt seinen letzten Satz |
