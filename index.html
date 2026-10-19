@@ -228,7 +228,7 @@ function drawEye(g, cx, cy, side, e, t) {
   if (e.broken) { drawBrokenScreen(g, cx, cy, e.broken, t); return; }
   const p = e.cur;
   const blink = blinkPhase >= 0 ? Math.sin(blinkPhase * Math.PI) : 0;
-  const pk = (now() - popT) / 380, talk = 1 + talkLevel * .16, big = 1 + listenK * .27 + (pk < 1 ? .1 * Math.sin(pk * Math.PI) : 0);
+  const pk = (now() - popT) / 380, talk = 1 + talkLevel * .16, big = 1 + listenK * .17 + (pk < 1 ? .06 * Math.sin(pk * Math.PI) : 0);
   const persp = 1 + gaze.x * side * .1;
   const w = .3 * S * p.w * persp * big;
   const h = .37 * S * p.h * talk * persp * big * (1 - blink * .9) * (0.08 + .92 * bootT);
@@ -268,10 +268,12 @@ function drawEye(g, cx, cy, side, e, t) {
 
 // A hit eye looks like a TV screen that got smacked: coloured stripes, a black ink blot, static and flicker.
 function makeBrokenScreen() {
-  const cols = ['#39ff6a', '#39ff6a', '#39ff6a', '#2bd15a', '#ff3df0', '#ffffff', '#3fe6ff', '#fff15a'];
+  const cols = ['#39ff6a', '#b44dff', '#ff3df0', '#3fe6ff', '#fff15a', '#ff4040', '#ffffff', '#7a5cff', '#ff9a3d'];
   const lines = []; const n = 14 + Math.floor(Math.random() * 8);
   for (let k = 0; k < n; k++) lines.push({ x: rand(-.5, .5), w: rand(.008, .035), c: pick(cols), y0: rand(-.5, -.1), y1: rand(.1, .5), on: Math.random() < .85 });
-  return { lines, blot: { x: rand(-.15, .15), y: rand(-.15, .1), r: rand(.18, .26) }, keep: rand(.25, .45), repair: 0 };
+  // wide test-pattern colour bars like on a broken TV
+  const bars = ['#ffffff', '#fff15a', '#3fe6ff', '#39ff6a', '#ff3df0', '#ff4040', '#4d4dff'];
+  return { lines, bars, barsY: rand(-.5, .1), barsH: rand(.2, .4), blot: { x: rand(-.15, .15), y: rand(-.15, .1), r: rand(.18, .26) }, keep: rand(.25, .45), repair: 0 };
 }
 function drawBrokenScreen(g, cx, cy, b, t) {
   const w = .3 * S, h = .37 * S, r = Math.min(w, h) * .24, fade = 1 - b.repair;
@@ -281,6 +283,11 @@ function drawBrokenScreen(g, cx, cy, b, t) {
   g.fillStyle = eyeCol(); g.fillRect(-w, -h, w * 2, h * 2);
   g.globalAlpha = fade; g.fillStyle = '#06120f'; g.fillRect(-w / 2 + b.keep * w * b.repair, -h, w * 2, h * 2);
   if (Math.random() < .5 * fade) { g.fillStyle = eyeCol(); g.globalAlpha = .55 * fade; g.fillRect(-w / 2, -h / 2, w * b.keep, h); }
+  // a strip of test-pattern colour bars that jumps around
+  if (Math.random() < .85) {
+    const y = (b.barsY + (Math.random() < .2 ? rand(-.15, .15) : 0)) * h, bh = b.barsH * h, bw = w / b.bars.length;
+    g.globalAlpha = fade * .8; b.bars.forEach((c, k) => { g.fillStyle = c; g.fillRect(-w / 2 + k * bw, y, bw + 1, bh); });
+  }
   // coloured stripes, flickering
   for (const L of b.lines) {
     if (!L.on && Math.random() < .7) continue;
@@ -291,7 +298,7 @@ function drawBrokenScreen(g, cx, cy, b, t) {
   g.globalAlpha = fade * .8;
   for (let k = 0; k < 4; k++) {
     const y = rand(-.5, .5) * h, hh = rand(.01, .04) * h;
-    for (let x = -w / 2; x < w / 2; x += 4) { const v = Math.floor(rand(60, 255)); g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(x, y, 4, hh); }
+    for (let x = -w / 2; x < w / 2; x += 4) { const v = Math.floor(rand(60, 255)), q = Math.random(); g.fillStyle = q < .25 ? `rgb(${v},40,${v})` : q < .4 ? `rgb(40,${v},${v})` : q < .5 ? `rgb(${v},${v},40)` : `rgb(${v},${v},${v})`; g.fillRect(x, y, 4, hh); }
   }
   // black ink blot where the bullet hit, with dark streaks running out of it
   g.globalAlpha = fade; g.fillStyle = '#000';
@@ -299,7 +306,7 @@ function drawBrokenScreen(g, cx, cy, b, t) {
   g.fillRect(b.blot.x * w - w * .02, b.blot.y * h, w * .04, h);
   g.restore();
   // the whole screen jumps a little now and then
-  if (Math.random() < .08 * fade) { g.globalAlpha = .35; g.fillStyle = '#39ff6a'; g.fillRect(-w / 2, rand(-.5, .5) * h, w, 2); }
+  if (Math.random() < .08 * fade) { g.globalAlpha = .35; g.fillStyle = pick(['#39ff6a', '#b44dff', '#ff3df0', '#3fe6ff']); g.fillRect(-w / 2, rand(-.5, .5) * h, w, 2); }
   g.restore(); g.globalAlpha = 1;
 }
 // Drawing: EMO holds a pencil and draws a picture below his eyes, line by line.

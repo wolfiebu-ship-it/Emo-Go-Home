@@ -4,9 +4,9 @@ Ein kleiner Roboter auf dem Bildschirm, inspiriert von EMO. Man sieht nur seine 
 
 ## Öffnen
 
-**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v25/**
+**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v26/**
 
-Jede neue Version bekommt einen eigenen Link (`v25`, `v26`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 26`.
+Jede neue Version bekommt einen eigenen Link (`v26`, `v27`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 27`.
 
 Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gibt keine Knöpfe und keine Einstellungen.
 
@@ -19,7 +19,7 @@ Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gib
 
 **Mit Claude-Gehirn** redet er über alles und sucht im Internet. Dafür EMO einmal mit diesem Link öffnen (Schlüssel von https://console.anthropic.com/settings/keys):
 
-`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v25/#key=DEIN-SCHLÜSSEL`
+`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v26/#key=DEIN-SCHLÜSSEL`
 
 Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse entfernt. Er muss mit `sk-ant-` anfangen. Ist er falsch, gesperrt oder ist kein Guthaben mehr auf dem Konto, sagt EMO das einmal, zeigt den Grund kurz unten an und antwortet danach mit seinem eigenen Wissensbuch weiter. Mit `#ort=Kassel` kann man den Wohnort für das Wetter ändern (Standard: Frankfurt am Main).
 
@@ -31,14 +31,14 @@ Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse en
 | --- | --- |
 | Irgendeine Frage („Wie wird das Wetter morgen?“, „Wie groß ist die Sonne?“, „Wer hat gestern gewonnen?“) | antwortet als KI, mit Wetter-Daten und Websuche |
 | „Emo, Hände hoch!“ oder Fingerpistole in die Kamera zeigen | hebt sofort die Hände, ohne etwas zu sagen, guckt ein bisschen traurig und zittert |
-| „Peng!“, „Bang!“, „Boom!“ (wenn die Hände oben sind, reicht auch alles, was das Handy ähnlich versteht, z. B. „Bank“, „Ben“, „Pen“), sehr lauter Knall oder Fingerpistole hochzucken lassen | Zeitlupe! Entweder weicht er wie im Film knapp aus, oder die Kugel trifft sein Auge: es geht kaputt wie ein Fernseher, auf den man haut (grüne und bunte Striche, Rauschen, schwarzer Fleck, Brummen). EMO guckt traurig und sagt „Oh, jetzt bin ich sehr traurig“, dann geht das Auge wieder an |
+| „Peng!“, „Bang!“, „Boom!“ (wenn die Hände oben sind, reicht auch alles, was das Handy ähnlich versteht, z. B. „Bank“, „Ben“, „Pen“), sehr lauter Knall oder Fingerpistole hochzucken lassen | Zeitlupe! Entweder weicht er wie im Film knapp aus, oder die Kugel trifft sein Auge: es geht kaputt wie ein Fernseher, auf den man haut (bunte Testbild-Balken, lila, pinke, grüne und blaue Striche, buntes Rauschen, schwarzer Fleck, Brummen). EMO guckt traurig und sagt „Oh, jetzt bin ich sehr traurig“, dann geht das Auge wieder an |
 | „Hände runter“ | nimmt die Hände runter |
 | „Erzähl einen Witz“ | erzählt jedes Mal einen anderen Witz |
 | „Zwei plus zwei“, „10 mal 5“, „hundert geteilt durch vier“ | rechnet (auch mit Zahlwörtern, Punkt vor Strich) |
 | „Tanz mal“, „Sing was“ | tanzt oder singt |
 | „Gute Nacht“ / „Wach auf“ | schläft ein / wacht auf |
 | „Emo, mach Untertitel an“ / „Untertitel aus“ | zeigt an, was EMO sagt und was er gehört hat (normalerweise aus) |
-| „Hey Emo …“ | ein kurzer Piep-Ton, seine Augen werden deutlich größer und schauen dich an: er hört zu. Auch wenn das Handy „Emma“, „Elmo“, „Hemo“ oder „Imo“ versteht |
+| „Hey Emo …“ | ein kurzer Piep-Ton, seine Augen werden etwas größer und schauen dich an: er hört zu. Auch wenn das Handy „Emma“, „Elmo“, „Hemo“ oder „Imo“ versteht |
 | Reinreden, während EMO spricht | er ist sofort still |
 | Geräusche, Gemurmel, halbe Sätze | EMO bleibt ruhig und lässt dich ausreden, statt irgendwas zu sagen |
 | „Was hast du gesagt?“, „Sag das nochmal“, „Wie bitte?“ | wiederholt seinen letzten Satz |
