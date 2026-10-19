@@ -1558,7 +1558,7 @@ async function handleInput(raw) {
   if (!t || t.length < 2) return;
   // not called by name: EMO ignores it (only "Bang" with raised hands always works)
   if (!addressed(raw)) return;
-  wakeUntil = 0;
+  if (!ptt) wakeUntil = 0;
   if (!calledByYou(raw) && isEcho(t)) return;
   if (FILLER.test(t)) { activity(); setExpr('happy', 900); return; }
   setHeard(raw); activity();
@@ -1921,7 +1921,7 @@ function logHeard(kind, txt) {
 function showDiag() {
   const ear = listenMode === 'web' ? 'Apple/Google-Erkennung' + (webWorked ? ' (hat schon etwas gehört)' : ' (noch nichts gehört)') : listenMode === 'vosk' ? 'EMOs eigene Erkennung' + (fallbackWhy ? ` (Apple: ${fallbackWhy})` : '') + (webRetried ? '' : ' – tipp einmal, dann versucht er Apple') : voskLoading ? 'eigene Erkennung lädt …' : 'aus';
   const tip = /service-not-allowed/.test(fallbackWhy) ? '\nTipp: iPhone-Einstellungen → Allgemein → Tastatur → „Diktierfunktion“ einschalten, dann Seite neu laden. Dann hört EMO viel besser.' : '';
-  $('#diag').textContent = `Ohren: ${ear}${tip}\nMikrofon: ${micOn ? 'an' : 'AUS'}   Stimme: ${piper ? 'Piper' : readyVoice ? 'Gerät' : 'lädt'}   Version: ${location.pathname.split('/').filter(Boolean).pop()}\n\nZuletzt gehört (· = unterwegs, ■ = fertig):\n${heardLog.join('\n') || '(noch nichts)'}\n\nNochmal 2 s drücken = zu`;
+  $('#diag').textContent = `Ohren: ${ear}${tip}\nMikrofon: ${micOn ? 'an' : 'AUS'}   Stimme: ${piper ? 'Piper' : readyVoice ? 'Gerät' : 'lädt'}   Version: ${location.pathname.split('/').filter(Boolean).pop()}\n\nZuletzt gehört (· = unterwegs, ■ = fertig):\n${heardLog.join('\n') || '(noch nichts)'}\n\nNochmal mit zwei Fingern 2 s halten = zu`;
 }
 function allowedQuick(raw, t) { return addressed(raw) || (hands.target > .5 && bangSaid(t)); }
 function heardPartial(txt) {
@@ -2348,11 +2348,34 @@ addEventListener('touchend', unlock, { passive: true });
 addEventListener('click', unlock);
 
 let taps = [];
-let pressTimer = 0;
-const endPress = () => clearTimeout(pressTimer);
-cvs.addEventListener('pointerup', endPress); cvs.addEventListener('pointercancel', endPress); cvs.addEventListener('pointerleave', endPress);
-cvs.addEventListener('pointerdown', () => { clearTimeout(pressTimer); pressTimer = setTimeout(() => { const d = $('#diag'); d.hidden = !d.hidden; if (!d.hidden) { showDiag(); taps = []; pokeUntil = 0; } }, 1800); });
-cvs.addEventListener('pointerdown', async e => {
+// Touch: a short tap pokes EMO; holding a finger on the screen makes him listen (like "Hey Emo");
+// holding two fingers for 2 seconds opens the check screen.
+let pressTimer = 0, diagTimer = 0, pressAt = 0, ptt = false, fingers = 0;
+function startListenByTouch() {
+  ptt = true;
+  if (speaking) bargeIn();
+  wakeCued = false; wakeCue(); wakeUntil = now() + 60000; listenUntil = now() + 60000;
+}
+function endListenByTouch() {
+  if (!ptt) return; ptt = false;
+  // a little time for the last words to arrive
+  wakeUntil = now() + 3500; listenUntil = now() + 1200;
+}
+cvs.addEventListener('pointerdown', e => {
+  fingers++; pressAt = now(); lastTap = now();
+  clearTimeout(pressTimer); clearTimeout(diagTimer);
+  if (fingers >= 2) { endListenByTouch(); diagTimer = setTimeout(() => { const d = $('#diag'); d.hidden = !d.hidden; if (!d.hidden) showDiag(); }, 2000); return; }
+  if (!audioOk || recordBusy || wantFull) return;
+  pressTimer = setTimeout(startListenByTouch, 350);
+});
+const liftFinger = e => {
+  fingers = Math.max(0, fingers - 1); clearTimeout(pressTimer); clearTimeout(diagTimer);
+  const held = now() - pressAt;
+  if (ptt) { endListenByTouch(); return; }
+  if (e.type === 'pointerup' && held < 350 && fingers === 0) onTap(e);
+};
+cvs.addEventListener('pointerup', liftFinger); cvs.addEventListener('pointercancel', liftFinger);
+async function onTap(e) {
   if (wantFull) { wantFull = false; goFull().then(() => say('Tadaa! Vollbild!', 'happy'), () => {}); return; }
   if (!audioOk) return; // the first tap only wakes up sound and motion (handled on touchend/click)
   if (recordBusy) { recCancel = true; lastTap = now(); if (!recording) { stopVoice(); sayToken++; speaking = false; } return; }
@@ -2372,7 +2395,7 @@ cvs.addEventListener('pointerdown', async e => {
   // 3rd tap: green swirly eyes, tongue out, a quick head shake
   taps = []; pokeUntil = now() + 5000; sfxWobble(); setTimeout(() => { if (now() < pokeUntil) sfxWobble(); }, 1800);
   say(pick(['Oh … mir geht\'s nicht gut. Hör bitte auf.', 'Uff … mir geht\'s nicht gut. Bitte hör auf.']), null);
-});
+}
 cvs.addEventListener('contextmenu', e => e.preventDefault());
 boot();
 </script>
