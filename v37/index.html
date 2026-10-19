@@ -822,7 +822,7 @@ function update(dt, t) {
   if (asleep && started && !retired && Math.random() < dt * .25) sfxSnore();
 
   // the device's recognizer never started (or hears speech but never understands anything): switch to EMO's own ears
-  if (listenMode === 'web' && !webWorked && ((speechSeenAt && t - speechSeenAt > 10000) || (!webStarted && webAskedAt && t - webAskedAt > 12000))) { speechSeenAt = 0; fallbackToVosk(); }
+  if (listenMode === 'web' && !webWorked && ((speechSeenAt && t - speechSeenAt > 10000) || (!webStarted && webAskedAt && t - webAskedAt > 12000))) { speechSeenAt = 0; fallbackToVosk(webStarted ? 'hört nichts' : 'startet nicht'); }
   shakeStep(realDt, t);
   drawingStep(realDt, t);
   sign.t += (sign.target - sign.t) * ease(sign.target ? 7 : 12, realDt);
@@ -1919,8 +1919,9 @@ function logHeard(kind, txt) {
   if (!$('#diag').hidden) showDiag();
 }
 function showDiag() {
-  const ear = listenMode === 'web' ? 'Apple/Google-Erkennung' + (webWorked ? ' (hat schon etwas gehört)' : ' (noch nichts gehört)') : listenMode === 'vosk' ? 'EMOs eigene Erkennung' : voskLoading ? 'eigene Erkennung lädt …' : 'aus';
-  $('#diag').textContent = `Ohren: ${ear}\nMikrofon: ${micOn ? 'an' : 'AUS'}   Stimme: ${piper ? 'Piper' : readyVoice ? 'Gerät' : 'lädt'}   Version: ${location.pathname.split('/').filter(Boolean).pop()}\n\nZuletzt gehört (· = unterwegs, ■ = fertig):\n${heardLog.join('\n') || '(noch nichts)'}\n\nNochmal 2 s drücken = zu`;
+  const ear = listenMode === 'web' ? 'Apple/Google-Erkennung' + (webWorked ? ' (hat schon etwas gehört)' : ' (noch nichts gehört)') : listenMode === 'vosk' ? 'EMOs eigene Erkennung' + (fallbackWhy ? ` (Apple: ${fallbackWhy})` : '') + (webRetried ? '' : ' – tipp einmal, dann versucht er Apple') : voskLoading ? 'eigene Erkennung lädt …' : 'aus';
+  const tip = /service-not-allowed/.test(fallbackWhy) ? '\nTipp: iPhone-Einstellungen → Allgemein → Tastatur → „Diktierfunktion“ einschalten, dann Seite neu laden. Dann hört EMO viel besser.' : '';
+  $('#diag').textContent = `Ohren: ${ear}${tip}\nMikrofon: ${micOn ? 'an' : 'AUS'}   Stimme: ${piper ? 'Piper' : readyVoice ? 'Gerät' : 'lädt'}   Version: ${location.pathname.split('/').filter(Boolean).pop()}\n\nZuletzt gehört (· = unterwegs, ■ = fertig):\n${heardLog.join('\n') || '(noch nichts)'}\n\nNochmal 2 s drücken = zu`;
 }
 function allowedQuick(raw, t) { return addressed(raw) || (hands.target > .5 && bangSaid(t)); }
 function heardPartial(txt) {
@@ -1958,7 +1959,9 @@ function startListening() {
   if (USE_VOSK) startVosk().then(earsReady);
   else { startMic(); earsReady(); }
 }
-function fallbackToVosk() {
+let fallbackWhy = '', webRetried = false;
+function fallbackToVosk(why) {
+  if (why) fallbackWhy = why;
   if (listenMode === 'vosk' || voskLoading) return;
   const r = rec; rec = null; micOn = false; listenMode = ''; earState();
   try { r && r.abort(); } catch (e) {}
@@ -2006,13 +2009,13 @@ function newSession() {
   };
   rec.onerror = e => {
     // the device's recognizer is not available (no Siri/dictation, no permission, offline): use EMO's own one
-    if (/not-allowed|service-not-allowed|audio-capture|language-not-supported|network/.test(e.error) && !webWorked) fallbackToVosk();
+    if (/not-allowed|service-not-allowed|audio-capture|language-not-supported|network/.test(e.error) && !webWorked) fallbackToVosk(e.error);
   };
   rec.onend = () => {
     if (me !== rec || !micOn || listenMode !== 'web') return;
     // ending again and again without ever hearing anything means it doesn't work here
     const t = now(); webEnds = webEnds.filter(x => t - x < 15000); webEnds.push(t);
-    if (!webWorked && webEnds.length >= 6) return fallbackToVosk();
+    if (!webWorked && webEnds.length >= 6) return fallbackToVosk('hört immer wieder auf');
     restartTimer = setTimeout(newSession, 100);
   };
   try { rec.start(); } catch (e) { restartTimer = setTimeout(newSession, 1000); }
@@ -2126,10 +2129,11 @@ async function startVosk() {
   micOn = true; listenMode = 'vosk'; earState();
   tryAudio();
   try {
+    const a = ac();
+    if (!voskRec) {
     await loadScript('listen/vosk.js');
     const modelBytes = await fetchBytes('listen/vosk-model-small-de.tar.gz', 'ears');
     voskModel = await Vosk.createModel(URL.createObjectURL(new Blob([modelBytes])));
-    const a = ac();
     voskRec = new voskModel.KaldiRecognizer(a.sampleRate);
     voskRec.setWords(true);
     voskRec.on('partialresult', m => { if (m.result.partial) perk(m.result.partial); if (m.result.partial && voskBuf) clearTimeout(voskTimer); heardPartial(m.result.partial); });
@@ -2141,6 +2145,7 @@ async function startVosk() {
       voskBuf = (voskBuf + ' ' + text).trim(); clearTimeout(voskTimer);
       voskTimer = setTimeout(() => { const all = voskBuf; voskBuf = ''; heardFinal(all); }, 400);
     });
+    }
     const srcNode = a.createMediaStreamSource(micStream);
     micProc = a.createScriptProcessor(4096, 1, 1);
     const sink = a.createGain(); sink.gain.value = 0;
@@ -2318,7 +2323,15 @@ function greet() {
   say(pick(['Hallo! Ich bin Emo! Frag mich was!', 'Hi! Ich bin wach! Was machen wir?', 'Huhu! Da bist du ja!']), 'happy');
 }
 // Browsers only allow sound after the first touch. Any touch, click or key unlocks it once.
+function retryAppleEars() {
+  if (webRetried || !SR || listenMode !== 'vosk' || voskLoading || recording) return;
+  webRetried = true;
+  try { if (micProc) { micProc.onaudioprocess = null; micProc.disconnect(); micProc = null; } if (micStream) micStream.getTracks().forEach(t => t.stop()); micStream = null; } catch (e) {}
+  micOn = false; listenMode = ''; webWorked = false; webEnds = []; webStarted = false; webAskedAt = 0; speechSeenAt = 0;
+  startMic(); // runs inside the touch, which iOS needs
+}
 function unlock() {
+  retryAppleEars();
   startMotion();
   try { ac(); } catch (e) {}
   if (!micOn) startListening();
