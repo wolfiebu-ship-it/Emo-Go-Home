@@ -247,7 +247,11 @@ function drawEye(g, cx, cy, side, e, t) {
     g.beginPath(); g.moveTo(-a, -a); g.lineTo(a, a); g.moveTo(a, -a); g.lineTo(-a, a); g.stroke(); g.restore(); return;
   }
   if (e.special === 'spiral') {
-    g.rotate(t / (dizzy ? 90 : 160) * side); g.scale(1 + .12 * Math.sin(t / 120), 1 + .12 * Math.sin(t / 120)); g.strokeStyle = eyeCol(); g.lineWidth = S * .034; g.lineCap = 'round'; g.beginPath();
+    const wob = Math.min(1, (dizzy ? 1 : 0) + (now() < pokeUntil ? 1 : 0) + .3);
+    g.translate(Math.sin(t / 140 + side * 1.7) * S * .03 * wob, Math.cos(t / 175 + side) * S * .025 * wob);
+    g.rotate(t / (dizzy ? 90 : 110) * side + Math.sin(t / 230) * .3 * wob);
+    const pul = 1 + .14 * Math.sin(t / 120 + side), sq = 1 + .1 * Math.sin(t / 95 - side);
+    g.scale(pul * sq, pul / sq); g.strokeStyle = eyeCol(); g.lineWidth = S * .034; g.lineCap = 'round'; g.beginPath();
     for (let a = 0; a < Math.PI * 6; a += .15) { const rr2 = a / (Math.PI * 6) * w * .45; const px = Math.cos(a) * rr2, py = Math.sin(a) * rr2; a ? g.lineTo(px, py) : g.moveTo(px, py); }
     g.stroke(); g.restore(); return;
   }
@@ -701,9 +705,11 @@ function shakeStep(dt, t) {
     tongue = Math.min(1, tongue + dt * 3);
     sick = Math.min(.9, sick + dt * 2.5);
     eyes.forEach(e => e.special = 'spiral');
-    face.k = 16; face.tx = t - lastTap < 650 ? Math.sin((t - lastTap) / 55) * .06 : 0;
+    face.k = 12;
+    if (t - lastTap < 650) { face.tx = Math.sin((t - lastTap) / 55) * .06; face.trot = 0; }
+    else { face.tx = Math.sin(t / 380) * .04; face.ty = Math.cos(t / 300) * .025; face.trot = Math.sin(t / 420) * .09; }
   } else {
-    if (pokeUntil) { pokeUntil = 0; face.tx = 0; face.k = 7; eyes.forEach(e => e.special = null); exprUntil = now(); sick = 0; tongue = 0; }
+    if (pokeUntil) { pokeUntil = 0; face.tx = 0; face.ty = 0; face.trot = 0; face.k = 7; eyes.forEach(e => e.special = null); exprUntil = now(); sick = 0; tongue = 0; }
     tongue = Math.max(0, tongue - dt * 1.2);
     if (t < queasyUntil) {
       // still swaying and a bit green after the ride
@@ -2246,7 +2252,7 @@ cvs.addEventListener('pointerdown', async e => {
   lastTap = now();
   if (dizzy || playingMine || recording) return;
   taps = taps.filter(x => now() - x < 4000); taps.push(now());
-  if (now() < pokeUntil) { pokeUntil = now() + 2600; return; } // already sick: tapping keeps it going
+  if (now() < pokeUntil) { pokeUntil = now() + 5000; return; } // already sick: tapping keeps it going
   if (taps.length < 3) {
     // 1st and 2nd tap: he squints a little
     setExpr('squint', 900); try { const a = ac().currentTime; tone(620, 420, a, .09, 'sine', .14); } catch (e) {}
@@ -2254,7 +2260,7 @@ cvs.addEventListener('pointerdown', async e => {
     return;
   }
   // 3rd tap: green swirly eyes, tongue out, a quick head shake
-  taps = []; pokeUntil = now() + 2600; sfxWobble();
+  taps = []; pokeUntil = now() + 5000; sfxWobble(); setTimeout(() => { if (now() < pokeUntil) sfxWobble(); }, 1800);
   say(pick(['Oh … mir geht\'s nicht gut. Hör bitte auf.', 'Uff … mir geht\'s nicht gut. Bitte hör auf.']), null);
 });
 cvs.addEventListener('contextmenu', e => e.preventDefault());
