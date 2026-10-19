@@ -64,14 +64,19 @@ const IS_SAFARI = /^((?!chrome|android|crios|fxios|edg).)*safari/i.test(UA);
 const cvs = $('#face'), ctx = cvs.getContext('2d');
 const off = document.createElement('canvas'), octx = off.getContext('2d');
 const glow = document.createElement('canvas'), gctx = glow.getContext('2d');
+const glow2 = document.createElement('canvas'), g2ctx = glow2.getContext('2d');
+// Safari (iPhone/iPad) ignores the canvas blur filter, so the glow is blurred by shrinking and growing it instead
+const HAS_BLUR = (() => { try { gctx.filter = 'blur(2px)'; const ok = gctx.filter === 'blur(2px)'; gctx.filter = 'none'; return ok; } catch (e) { return false; } })();
 let W = 0, H = 0, DPR = 1, S = 1;
 const FACE_Y = .34; // eye height on the screen (0 = top, .5 = middle)
 function resize() {
-  DPR = Math.min(2, window.devicePixelRatio || 1);
+  DPR = Math.min(3, window.devicePixelRatio || 1);
   W = innerWidth; H = innerHeight;
   for (const c of [cvs, off]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
   glow.width = Math.max(1, Math.round(W / 4)); glow.height = Math.max(1, Math.round(H / 4));
-  S = Math.min(W / 1.75, H * 0.9);
+  glow2.width = Math.max(1, Math.round(W / 12)); glow2.height = Math.max(1, Math.round(H / 12));
+  // phones held upright: a bit bigger eyes, so they are easy to see
+  S = Math.min(W / (H > W * 1.2 ? 1.5 : 1.75), H * 0.9);
 }
 addEventListener('resize', resize); resize();
 
@@ -133,9 +138,11 @@ let timeScale = 1, timeTarget = 1, glitch = 0, trail = [], lastTrail = 0, sweat 
 let bullets = [], screenCracks = [], sparks = [];
 let thinking = false, speaking = false, talkLevel = 0, listenUntil = 0, listenK = 0;
 function perk(txt) {
+  const c = clean(txt || ''), called = txt !== undefined && (WAKE.test(c) || wakeAt(c) > 0);
+  // "Hey Emo" always gets his attention, even while he talks (he stops for you)
+  if (called) { wakeCue(); return; }
   if (speaking || asleep || actionLock || !(txt === undefined || addressed(txt))) return;
-  listenUntil = now() + 1400;
-  const c = clean(txt || ''); if (txt !== undefined && (WAKE.test(c) || wakeAt(c))) wakeCue();
+  listenUntil = Math.max(listenUntil, now() + 1400);
 }
 // EMO only follows you when you call him: "Hey Emo, …" (or right after "Hey Emo" alone, for a few seconds)
 const WAKE = /(^|\s)(hey|hei|he|ey|hallo|hi|ok|okay|na)?\s*(emo|emma|ema|nemo|imo|e-mo|e mo|elmo|emu|emmo|ehmo|immo|amo|emos|hemo|heimo|ihmo|aemo|emoh)(\s|$)|^(hey|hei|he) mo(\s|$)/;
@@ -161,8 +168,10 @@ function wakeAt(t) {
 // "Hey Emo" was heard: a little sound and big eyes, so you know he listens
 let wakeCued = false, popT = 0;
 function wakeCue() {
-  if (wakeCued || asleep) return; wakeCued = true; popT = now();
-  listenUntil = now() + 1600; lookAt(0, -.15, 1500);
+  listenUntil = Math.max(listenUntil, now() + 2500);
+  if (wakeCued) return; wakeCued = true; popT = now();
+  if (asleep) { asleep = false; bootT = 1; applyExpr('neutral'); }
+  activity(); lookAt(0, -.15, 1500);
   try { const t = ac().currentTime; tone(880, 990, t, .07, 'sine', .12); tone(1320, 1480, t + .07, .09, 'sine', .1); } catch (e) {}
 }
 let actionLock = false;
@@ -181,6 +190,7 @@ function applyExpr(name) {
 }
 function setExpr(name, ms = 2600) { applyExpr(name); exprUntil = ms ? now() + ms : Infinity; }
 function restingExpr() {
+  if (listenK > .3 && !speaking && !thinking && hands.target < .5) return 'neutral';
   if (started && !greeted) return 'sleepy';
   if (asleep) return 'asleep';
   if (thinking) return 'thinking';
@@ -401,19 +411,19 @@ function renderDrawing(g, t) {
 let party = [], partyUntil = 0, nextBalloon = 0;
 const PARTY_COLS = ['#ff4f7b', '#ffd84d', '#4dd7ff', '#6dff8f', '#b07aff', '#ffa64d', '#ffffff'];
 function startParty(ms) {
-  partyUntil = now() + ms; nextBalloon = 0;
-  // a first big burst from both sides
-  for (let k = 0; k < 90; k++) { const side = k % 2 ? 1 : -1; party.push({ kind: 'c', x: side < 0 ? 0 : W, y: H * rand(.5, .9), vx: -side * rand(200, 650), vy: -rand(450, 950), rot: rand(0, 6), vr: rand(-12, 12), w: rand(6, 11), h: rand(10, 18), c: pick(PARTY_COLS), flip: rand(0, 6) }); }
+  partyUntil = now() + Math.min(ms, 1600); nextBalloon = 0;
+  // one big quick burst from both sides
+  for (let k = 0; k < 120; k++) { const side = k % 2 ? 1 : -1; party.push({ kind: 'c', x: side < 0 ? 0 : W, y: H * rand(.6, 1), vx: -side * rand(300, 900), vy: -rand(700, 1300), rot: rand(0, 6), vr: rand(-12, 12), w: rand(6, 11), h: rand(10, 18), c: pick(PARTY_COLS), flip: rand(0, 6) }); }
 }
 function partyStep(dt, t) {
   if (t < partyUntil) {
-    const n = Math.min(6, Math.floor(rand(1, 4)));
-    for (let k = 0; k < n && party.length < 320; k++) party.push({ kind: 'c', x: rand(0, W), y: -20, vx: rand(-40, 40), vy: rand(60, 160), rot: rand(0, 6), vr: rand(-8, 8), w: rand(6, 11), h: rand(10, 18), c: pick(PARTY_COLS), flip: rand(0, 6) });
-    if (Math.random() < dt * 4) party.push({ kind: 'h', x: rand(.1, .9) * W, y: H + 20, vx: 0, vy: -rand(70, 130), s: rand(.6, 1.3), c: pick(['#ff4f7b', '#ff7ad9', '#ff3355']), ph: rand(0, 6), life: 1 });
-    if (t > nextBalloon) { nextBalloon = t + rand(700, 1300); party.push({ kind: 'b', x: rand(.08, .92) * W, y: H + 60, vx: 0, vy: -rand(80, 140), s: rand(.8, 1.2), c: pick(PARTY_COLS.slice(0, 6)), ph: rand(0, 6) }); }
+    const n = Math.floor(rand(2, 6));
+    for (let k = 0; k < n && party.length < 320; k++) party.push({ kind: 'c', x: rand(0, W), y: -20, vx: rand(-40, 40), vy: rand(250, 420), rot: rand(0, 6), vr: rand(-8, 8), w: rand(6, 11), h: rand(10, 18), c: pick(PARTY_COLS), flip: rand(0, 6) });
+    if (Math.random() < dt * 8) party.push({ kind: 'h', x: (Math.random() < .5 ? rand(.03, .25) : rand(.75, .97)) * W, y: H + 20, vx: 0, vy: -rand(200, 320), s: rand(.6, 1.3), c: pick(['#ff4f7b', '#ff7ad9', '#ff3355']), ph: rand(0, 6), life: 1 });
+    if (t > nextBalloon) { nextBalloon = t + rand(350, 600); party.push({ kind: 'b', x: (Math.random() < .5 ? rand(.03, .25) : rand(.75, .97)) * W, y: H + 60, vx: 0, vy: -rand(220, 320), s: rand(.8, 1.2), c: pick(PARTY_COLS.slice(0, 6)), ph: rand(0, 6) }); }
   }
   for (const p of party) {
-    if (p.kind === 'c') { p.vy = Math.min(p.vy + 500 * dt, 170); p.vx *= Math.exp(-1.5 * dt); p.x += (p.vx + Math.sin(t / 300 + p.flip) * 30) * dt; p.y += p.vy * dt; p.rot += p.vr * dt; p.flip += dt * 6; }
+    if (p.kind === 'c') { p.vy = Math.min(p.vy + 900 * dt, 420); p.vx *= Math.exp(-1.5 * dt); p.x += (p.vx + Math.sin(t / 300 + p.flip) * 30) * dt; p.y += p.vy * dt; p.rot += p.vr * dt; p.flip += dt * 6; }
     else { p.x += Math.sin(t / 500 + p.ph) * 25 * dt; p.y += p.vy * dt; }
   }
   party = party.filter(p => p.y < H + 40 && p.y > -140);
@@ -461,6 +471,7 @@ function render(t) {
   g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, off.width, off.height);
   g.setTransform(DPR, 0, 0, DPR, 0, 0);
   const sx = (Math.random() - .5) * shake * 18, sy = (Math.random() - .5) * shake * 18;
+  renderParty(g, t);
   g.save();
   g.translate(W / 2 + face.x * S + sx, H * FACE_Y + face.y * S + sy); g.rotate(face.rot); g.scale(face.sc, face.sc);
   const gx = gaze.x * .085 * S, gy = gaze.y * .075 * S;
@@ -500,6 +511,18 @@ function render(t) {
     const downY = H * (1 - FACE_Y) / face.sc + .3 * S, y = lerp(downY, .1 * S, greetHand.t);
     drawHand(g, .66 * S + Math.sin(t / 110) * S * .035, y, 1, .1 + Math.sin(t / 110) * .35, t);
   }
+  if (exprName === 'love' && !asleep) {
+    // a little mouth shaped like a heart, it opens with the voice
+    const mw = .13 * S, open = 1 + talkLevel * .6;
+    g.save(); g.translate(0, .27 * S); g.scale(1, open);
+    g.fillStyle = HEART; g.beginPath();
+    g.moveTo(0, mw * .42);
+    g.bezierCurveTo(-mw * .95, -mw * .05, -mw * .55, -mw * .5, 0, -mw * .18);
+    g.bezierCurveTo(mw * .55, -mw * .5, mw * .95, -mw * .05, 0, mw * .42);
+    g.fill();
+    g.fillStyle = '#7a0f2a'; g.beginPath(); g.ellipse(0, mw * .06, mw * .28, mw * .1 * (.4 + talkLevel), 0, 0, Math.PI * 2); g.fill();
+    g.restore();
+  }
   drawTongue(g, t);
   if (recording) {
     const pulse = .6 + .4 * Math.sin(t / 180);
@@ -516,7 +539,6 @@ function render(t) {
   }
   g.restore();
   renderDrawing(g, t);
-  renderParty(g, t);
 
   for (const c of screenCracks) {
     g.save(); g.translate(c.x, c.y); g.globalAlpha = Math.max(0, c.alpha) * .85; g.strokeStyle = '#e9fbff'; g.lineWidth = 1.6; g.lineJoin = 'round'; strokeLines(g, c.lines);
@@ -550,8 +572,18 @@ function render(t) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cvs.width, cvs.height);
   gctx.clearRect(0, 0, glow.width, glow.height);
-  if ('filter' in gctx) gctx.filter = 'blur(3px)';
-  gctx.drawImage(off, 0, 0, glow.width, glow.height);
+  gctx.imageSmoothingEnabled = g2ctx.imageSmoothingEnabled = true;
+  try { gctx.imageSmoothingQuality = g2ctx.imageSmoothingQuality = 'high'; } catch (e) {}
+  if (HAS_BLUR) { gctx.filter = 'blur(3px)'; gctx.drawImage(off, 0, 0, glow.width, glow.height); }
+  else {
+    // shrink twice and grow back: a smooth glow without the blocky edges
+    g2ctx.clearRect(0, 0, glow2.width, glow2.height); g2ctx.drawImage(off, 0, 0, glow2.width, glow2.height);
+    gctx.drawImage(off, 0, 0, glow.width, glow.height);
+    gctx.globalAlpha = .9; gctx.drawImage(glow2, 0, 0, glow.width, glow.height); gctx.globalAlpha = 1;
+    g2ctx.clearRect(0, 0, glow2.width, glow2.height); g2ctx.drawImage(glow, 0, 0, glow2.width, glow2.height);
+    gctx.clearRect(0, 0, glow.width, glow.height); gctx.drawImage(glow2, 0, 0, glow.width, glow.height);
+  }
+  ctx.imageSmoothingEnabled = true; try { ctx.imageSmoothingQuality = 'high'; } catch (e) {}
   ctx.globalAlpha = .85; ctx.drawImage(glow, 0, 0, cvs.width, cvs.height); ctx.globalAlpha = 1;
   ctx.drawImage(off, 0, 0);
   if (timeScale < .97) {
@@ -667,7 +699,7 @@ function update(dt, t) {
   talkLevel += (lvl - talkLevel) * ease(20, dt);
   if (recording) listenUntil = Math.max(listenUntil, t + 150);
   if (t < wakeUntil && !speaking) listenUntil = Math.max(listenUntil, t + 150);
-  listenK += ((t < listenUntil ? 1 : 0) - listenK) * ease(t < listenUntil ? 12 : 5, realDt);
+  listenK += ((t < listenUntil && (!speaking || t < wakeUntil) ? 1 : 0) - listenK) * ease(t < listenUntil ? 22 : 6, realDt);
 
   if (blinkPhase >= 0) { blinkPhase += realDt / .16; if (blinkPhase >= 1) blinkPhase = -1; }
   else if (t > nextBlink && !asleep) { blinkPhase = 0; nextBlink = t + rand(1800, 5500) * (Math.random() < .15 ? .1 : 1); }
@@ -859,6 +891,7 @@ function loadVoice() {
       ids(text) { ids = null; phon.callMain(['-l', cfg.espeak.voice, '--input', JSON.stringify([{ text }]), '--espeak_data', '/espeak-ng-data']); return ids; },
     };
     try { await synthChild('Hallo.'); } catch (e) {}
+    setTimeout(warmPhrases, 3000);
     return true;
   })().catch(e => { console.warn('voice failed', e); return false; })
     .then(ok => { readyVoice = true; loadProg.voice = 1; maybeGreet(); return ok; });
@@ -907,8 +940,11 @@ function playPcm(pcm, rate) {
   const dur = buf.duration / CHILD.shift;
   return new Promise(res => { src.onended = res; setTimeout(res, dur * 1000 + 400); }).then(() => { if (currentVoiceSrc === src) currentVoiceSrc = null; });
 }
+const ttsCache = new Map();
+async function warmPhrases() { for (const p of ['Ja?', 'Hm?', 'Ja? Ich höre!', 'Hier bin ich!']) { try { if (!ttsCache.has(p)) ttsCache.set(p, await synthChild(p)); } catch (e) {} } }
 async function speakChild(text, my) {
   if (!(await loadVoice())) return speakDevice(text);
+  if (ttsCache.get(text)) { if (my === sayToken) await playPcm(ttsCache.get(text), piper.cfg.audio.sample_rate); return; }
   const parts = (text.match(/[^.!?…]+[.!?…]*/g) || [text]).map(t => t.trim()).filter(Boolean);
   const c = parts[0].indexOf(',', 15);
   if (parts[0].length > 60 && c > 0 && c < parts[0].length - 15) parts.splice(0, 1, parts[0].slice(0, c + 1), parts[0].slice(c + 1).trim());
@@ -1009,7 +1045,7 @@ function canBarge(t) {
 function bargeIn() {
   partyUntil = 0;
   stopVoice(true); sayToken++; speaking = false; lastSaidEnd = now();
-  setExpr('curious', 2000); lookAt(0, 0, 2000);
+  setExpr('neutral', 1500); lookAt(0, -.1, 2000); listenUntil = Math.max(listenUntil, now() + 1500);
 }
 function repeatLast() {
   if (!lastAnswer) return say('Ich hab doch noch gar nichts gesagt!', 'curious', 0, true);
@@ -1397,7 +1433,7 @@ async function handleInput(raw) {
   const cr = clean(raw), crk = wakeAt(cr);
   if ((/^(hey|hei|he|ey|ok|okay|na|du)?\s*(emo|emma|ema|nemo|imo|e-mo|e mo|elmo|emu|emmo|ehmo|immo|amo|emos|hemo|heimo|ihmo|aemo|emoh|mo)$/.test(cr) || (crk && crk === cr.split(' ').length && !/^(hallo|hi)$/.test(cr.split(' ')[0]))) && !actionLock && !thinking) {
     await wake(true); wakeUntil = now() + 12000;
-    await say(pick(['Ja?', 'Ja? Ich höre!', 'Hm?', 'Hier bin ich!']), 'curious');
+    await say(pick(['Ja?', 'Ja? Ich höre!', 'Hm?', 'Hier bin ich!']), 'neutral');
     wakeUntil = now() + 9000; return;
   }
   if (!t || t.length < 2) return;
@@ -1765,9 +1801,10 @@ function heardPartial(txt) {
   utterQuick = true; setHeard(txt); activity(); quickAction(t);
 }
 function heardFinal(txt) {
+  if (txt && !recording && (WAKE.test(clean(txt)) || wakeAt(clean(txt)))) perk(txt);
   wakeCued = false;
   if (recording) { utterQuick = false; utterStart = 0; return; }
-  listenUntil = Math.min(listenUntil, now() + 250);
+  if (!addressed(txt)) listenUntil = Math.min(listenUntil, now() + 250);
   const was = utterQuick, duringSpeech = utterStart ? utterDuringSpeech : (speaking || now() - lastSaidEnd < 600);
   utterQuick = false; utterStart = 0;
   txt = (txt || '').replace(/\[unk\]/g, '').trim();
