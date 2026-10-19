@@ -147,16 +147,17 @@ function perk(txt) {
   listenUntil = Math.max(listenUntil, now() + 1400);
 }
 // EMO only follows you when you call him: "Hey Emo, …" (or right after "Hey Emo" alone, for a few seconds)
-const WAKE = /(^|\s)(hey|hei|he|ey|hallo|hi|ok|okay|na)?\s*(emo|emma|ema|nemo|imo|e-mo|e mo|elmo|emu|emmo|ehmo|immo|amo|emos|hemo|heimo|ihmo|aemo|emoh)(\s|$)|^(hey|hei|he) mo(\s|$)/;
+const WAKE = /(^|\s)(hey|hei|he|ey|hallo|hi|ok|okay|na)?\s*(emo|emma|ema|nemo|imo|e-mo|e mo|elmo|emu|emmo|immo|emos|hemo|heimo|ihmo|emoh)(\s|$)|^(hey|hei|he) mo(\s|$)/;
 let wakeUntil = 0;
 // "Hey Emo …" is always you, never EMO hearing himself (he never says "Hey Emo")
-const calledByYou = raw => (/(^|\s)(hey|hei|he|ey|ok|okay) (emo|emma|ema|nemo|imo|elmo|emu|emmo|ehmo|immo|amo|mo)(\s|$)|^(hemo|heimo)(\s|$)/.test(clean(raw)) || (wakeAt(clean(raw)) === 2 && !/^(hallo|hi|du|na)$/.test(clean(raw).split(' ')[0]))) && !/hey emo/i.test(lastSaid);
+const calledByYou = raw => (/(^|\s)(hey|hei|he|ey|ok|okay) (emo|emma|ema|nemo|imo|elmo|emu|emmo|immo|mo)(\s|$)|^(hemo|heimo)(\s|$)/.test(clean(raw)) || (wakeAt(clean(raw)) === 2 && !/^(hallo|hi|du|na)$/.test(clean(raw).split(' ')[0]))) && !/hey emo/i.test(lastSaid);
 function addressed(txt) { const r = String(txt || '').toLowerCase().replace(/[!?.,;:"'„“]/g, ' ').replace(/\s+/g, ' ').trim(); return WAKE.test(r) || wakeAt(r) > 0 || now() < wakeUntil; }
 // The phone often writes "Emo" wrong ("Emma", "Elmo", "Hemo", "Imo" …): a word that sounds like it,
 // at the start or right after "hey", counts. Returns how many words to cut off (0 = not called).
-const WAKE_NAMES = ['emo', 'emma', 'elmo', 'nemo', 'hemo', 'heimo', 'imo', 'emu', 'ehmo', 'emmo', 'amo', 'immo'];
+const WAKE_NAMES = ['emo', 'emma', 'elmo', 'nemo', 'hemo', 'heimo', 'imo', 'emu', 'emmo', 'immo'];
 const WAKE_NOT = new Set(['oma', 'opa', 'eva', 'demo', 'memo', 'ehm', 'em', 'emm', 'hm', 'echo', 'ja', 'mo', 'amor']);
 function isWakeName(w) {
+  if (/[äa]/.test((w || '')[0] || '') || /äh|ähm|aemo/.test(w || '')) return false; // "Ämo", "ähm" … are not his name
   w = simp(w || '');
   if (w.length < 2 || w.length > 6 || WAKE_NOT.has(w)) return false;
   return WAKE_NAMES.some(n => w === n || (w.length >= 3 && lev(w, n) <= 1));
@@ -462,6 +463,52 @@ function sfxFanfare() {
 }
 // hands stay fully on the screen, also on a phone held upright
 function handX() { return Math.max(.5 * S, Math.min(.76 * S, (W / 2 - .14 * S) / (face.sc || 1))); }
+// A sign EMO holds up with both hands while your message plays: "Alles Gute zum Geburtstag!"
+const sign = { t: 0, target: 0, deco: [], lines: ['Alles Gute', 'zum Geburtstag!'] };
+function makeSignDeco() {
+  const d = [];
+  while (d.length < 46) {
+    const x = rand(-.48, .48), y = rand(-.46, .46);
+    if (Math.abs(y) < .3 && Math.abs(x) < .4) continue; // keep the words free
+    d.push({ x, y, kind: pick(['r', 'r', 'c', 'w', 's']), c: pick(PARTY_COLS.slice(0, 6)), rot: rand(0, 6), k: rand(.7, 1.3) });
+  }
+  return d;
+}
+function drawSign(g, t) {
+  if (sign.t < .01) return;
+  const sw = Math.min(1.15 * S, W * .92 / (face.sc || 1)), sh = sw * .38;
+  const cy = .23 * S + sh / 2 + (1 - sign.t) * (H * (1 - FACE_Y) + sh), wob = Math.sin(t / 420) * .03 * sign.t;
+  g.save(); g.translate(0, cy); g.rotate(wob);
+  // the board
+  g.fillStyle = '#fff6e6'; rr(g, -sw / 2, -sh / 2, sw, sh, sh * .12); g.fill();
+  g.lineWidth = Math.max(2, sh * .035); g.strokeStyle = '#ff4f7b'; rr(g, -sw / 2 + sh * .05, -sh / 2 + sh * .05, sw - sh * .1, sh * .9, sh * .09); g.stroke();
+  // drawn confetti: little strips, dots, curly streamers and stars
+  for (const q of sign.deco) {
+    const x = q.x * sw, y = q.y * sh, u = sh * .045 * q.k;
+    g.save(); g.translate(x, y); g.rotate(q.rot); g.fillStyle = g.strokeStyle = q.c;
+    if (q.kind === 'r') g.fillRect(-u * .5, -u * 1.1, u, u * 2.2);
+    else if (q.kind === 'c') { g.beginPath(); g.arc(0, 0, u * .75, 0, Math.PI * 2); g.fill(); }
+    else if (q.kind === 'w') { g.lineWidth = u * .45; g.lineCap = 'round'; g.beginPath(); for (let k = 0; k <= 12; k++) { const px = (k / 12 - .5) * u * 4, py = Math.sin(k / 12 * Math.PI * 3) * u * .7; k ? g.lineTo(px, py) : g.moveTo(px, py); } g.stroke(); }
+    else { g.beginPath(); for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2, r = k % 2 ? u * .45 : u * 1.2; g.lineTo(Math.cos(a) * r, Math.sin(a) * r); } g.closePath(); g.fill(); }
+    g.restore();
+  }
+  // the words
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  const cols = [['#ff3d7f', '#b44dff'], ['#ff8a00', '#ff3d7f']];
+  sign.lines.forEach((line, i) => {
+    let fs = sh * (i ? .26 : .28); g.font = `700 ${fs}px Fredoka, sans-serif`;
+    const mw = g.measureText(line).width; if (mw > sw * .8) { fs *= sw * .8 / mw; g.font = `700 ${fs}px Fredoka, sans-serif`; }
+    const y = (i ? .17 : -.15) * sh, wdt = g.measureText(line).width;
+    const gr = g.createLinearGradient(-wdt / 2, 0, wdt / 2, 0); gr.addColorStop(0, cols[i][0]); gr.addColorStop(1, cols[i][1]);
+    g.fillStyle = gr; g.fillText(line, 0, y + Math.sin(t / 260 + i) * sh * .012);
+  });
+  g.restore();
+  // both hands hold the sign at its sides
+  for (const side of [-1, 1]) {
+    const hx = side * (sw / 2 - sh * .02), hy = cy + side * wob * sw / 2 + sh * .05;
+    drawHand(g, hx, hy, side, side * .35, t);
+  }
+}
 function drawHand(g, x, y, side, rot, t) {
   g.save(); g.translate(x, y); g.rotate(rot);
   const u = S * .0078; g.scale(u, u);
@@ -522,18 +569,7 @@ function render(t) {
     const downY = H * (1 - FACE_Y) / face.sc + .3 * S, y = lerp(downY, .1 * S, greetHand.t);
     drawHand(g, Math.min(.66 * S, handX()) + Math.sin(t / 110) * S * .035, y, 1, .1 + Math.sin(t / 110) * .35, t);
   }
-  if (exprName === 'love' && !asleep) {
-    // a little mouth shaped like a heart, it opens with the voice
-    const mw = .13 * S, open = 1 + talkLevel * .6;
-    g.save(); g.translate(0, .27 * S); g.scale(1, open);
-    g.fillStyle = HEART; g.beginPath();
-    g.moveTo(0, mw * .42);
-    g.bezierCurveTo(-mw * .95, -mw * .05, -mw * .55, -mw * .5, 0, -mw * .18);
-    g.bezierCurveTo(mw * .55, -mw * .5, mw * .95, -mw * .05, 0, mw * .42);
-    g.fill();
-    g.fillStyle = '#7a0f2a'; g.beginPath(); g.ellipse(0, mw * .06, mw * .28, mw * .1 * (.4 + talkLevel), 0, 0, Math.PI * 2); g.fill();
-    g.restore();
-  }
+  drawSign(g, t);
   drawTongue(g, t);
   if (recording) {
     const pulse = .6 + .4 * Math.sin(t / 180);
@@ -732,6 +768,7 @@ function update(dt, t) {
   if (listenMode === 'web' && !webWorked && ((speechSeenAt && t - speechSeenAt > 10000) || (!webStarted && webAskedAt && t - webAskedAt > 12000))) { speechSeenAt = 0; fallbackToVosk(); }
   shakeStep(realDt, t);
   drawingStep(realDt, t);
+  sign.t += (sign.target - sign.t) * ease(sign.target ? 7 : 5, realDt);
   if (greetHand.target && t > greetHand.until) greetHand.target = 0;
   greetHand.t += (greetHand.target - greetHand.t) * ease(greetHand.target ? 9 : 6, realDt);
   if (hands.target > .5 && !actionLock && !speaking && t - hands.since > 15000) { hands.since = t + 1e9; lowerHands(); }
@@ -1054,7 +1091,7 @@ function canBarge(t) {
   return false;
 }
 function bargeIn() {
-  partyUntil = 0;
+  partyUntil = 0; sign.target = 0;
   stopVoice(true); sayToken++; speaking = false; lastSaidEnd = now();
   setExpr('neutral', 1500); lookAt(0, -.1, 2000); listenUntil = Math.max(listenUntil, now() + 1500);
 }
@@ -1085,6 +1122,7 @@ function burst(x, y, n, colors) { for (let i = 0; i < n; i++) { const a = rand(0
 
 // "Hände hoch": up they go, right away and without a word
 function raiseHands(viaGun) {
+  sign.target = 0;
   if (actionLock || hands.target > .5) return;
   if (speaking) { stopVoice(); sayToken++; speaking = false; lastSaidEnd = now(); }
   if (asleep) { asleep = false; bootT = 1; }
@@ -1297,7 +1335,7 @@ const HANDS_DOWN = /\b(h(ä|a|e)nde?|arme)\s*(wieder\s*)?(runter|nach unten)/;
 const norm = s => {
   let t = s.toLowerCase().replace(/[!?.,;:"'„“]/g, ' ').replace(/\s+/g, ' ').trim();
   // "hey Emo, sei leise" -> "sei leise"; a plain "hallo Emo" stays a greeting
-  const m = t.match(/^(hey |hei |he |ey |hallo |hi |ok |okay |du |na )?(emo|emma|ema|nemo|imo|e-mo|e mo|elmo|emu|emmo|ehmo|immo|amo|emos|hemo|heimo|ihmo|aemo|emoh|mo)\b\s*(.*)$/);
+  const m = t.match(/^(hey |hei |he |ey |hallo |hi |ok |okay |du |na )?(emo|emma|ema|nemo|imo|e-mo|e mo|elmo|emu|emmo|immo|emos|hemo|heimo|ihmo|emoh|mo)\b\s*(.*)$/);
   if (m) t = m[3] || (m[1] && /hallo|hey|hi/.test(m[1]) ? 'hallo' : '');
   else { const k = wakeAt(t); if (k) { const w = t.split(' '); t = w.slice(k).join(' ') || (k === 2 && /hallo|hey|hi/.test(w[0]) ? 'hallo' : ''); } }
   return t.trim();
@@ -1442,7 +1480,7 @@ const FILLER = /^((ach|achso|ach so|aso|aha|ah|oh|okay|ok|okey|ja|jaa|jo|jep|nei
 async function handleInput(raw) {
   const t = norm(raw);
   const cr = clean(raw), crk = wakeAt(cr);
-  if ((/^(hey|hei|he|ey|ok|okay|na|du)?\s*(emo|emma|ema|nemo|imo|e-mo|e mo|elmo|emu|emmo|ehmo|immo|amo|emos|hemo|heimo|ihmo|aemo|emoh|mo)$/.test(cr) || (crk && crk === cr.split(' ').length && !/^(hallo|hi)$/.test(cr.split(' ')[0]))) && !actionLock && !thinking) {
+  if ((/^(hey|hei|he|ey|ok|okay|na|du)?\s*(emo|emma|ema|nemo|imo|e-mo|e mo|elmo|emu|emmo|immo|emos|hemo|heimo|ihmo|emoh|mo)$/.test(cr) || (crk && crk === cr.split(' ').length && !/^(hallo|hi)$/.test(cr.split(' ')[0]))) && !actionLock && !thinking) {
     await wake(true); wakeUntil = now() + 12000;
     await say(pick(['Ja?', 'Ja? Ich höre!', 'Hm?', 'Hier bin ich!']), 'neutral');
     wakeUntil = now() + 9000; return;
@@ -1962,12 +2000,15 @@ async function playMyVoice() {
   src.connect(out); out.connect(voiceAnalyser);
   currentVoiceSrc = src; currentVoiceOut = out; lastSaid = '';
   setExpr('love', buf.duration * 1000 + 2500); speaking = true; speakStart = now(); activity();
+  if (!sign.deco.length) sign.deco = makeSignDeco();
+  hands.target = 0; greetHand.target = 0; drawing = null; sign.target = 1;
   startParty(buf.duration * 1000 + 2500); sfxFanfare(); face.k = 18; face.ty = -.08; setTimeout(() => { face.ty = 0; }, 300);
   await wait(800);
   if (my !== sayToken) { partyUntil = 0; return; }
   src.start(); playingMine = true;
   await new Promise(r => { src.onended = r; setTimeout(r, buf.duration * 1000 + 300); });
   playingMine = false;
+  setTimeout(() => { if (!playingMine) sign.target = 0; }, 2000);
   if (my === sayToken) { speaking = false; lastSaidEnd = now() + 1500; currentVoiceSrc = null; }
 }
 async function deleteMyVoice() { myVoice = null; try { await kvSet('myVoice', null); } catch (e) {} return say('Okay, die Aufnahme ist gelöscht.', 'happy'); }

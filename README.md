@@ -39,7 +39,7 @@ Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse en
 | „Tanz mal“, „Sing was“ | tanzt oder singt |
 | „Gute Nacht“ / „Wach auf“ | schläft ein / wacht auf |
 | „Emo, mach Untertitel an“ / „Untertitel aus“ | zeigt an, was EMO sagt und was er gehört hat (normalerweise aus) |
-| „Hey Emo …“ | ein kurzer Piep-Ton, seine Augen werden etwas größer und schauen dich an: er hört zu. Auch wenn das Handy „Emma“, „Elmo“, „Hemo“ oder „Imo“ versteht |
+| „Hey Emo …“ | ein kurzer Piep-Ton, seine Augen werden etwas größer und schauen dich an: er hört zu. Auch wenn das Handy „Emma“, „Elmo“, „Hemo“ oder „Imo“ versteht (aber nicht bei „Ämo“ oder „ähm“) |
 | Reinreden, während EMO spricht | er ist sofort still |
 | Geräusche, Gemurmel, halbe Sätze | EMO bleibt ruhig und lässt dich ausreden, statt irgendwas zu sagen |
 | „Was hast du gesagt?“, „Sag das nochmal“, „Wie bitte?“ | wiederholt seinen letzten Satz |
@@ -56,7 +56,7 @@ Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse en
 | „Zähl bis zehn“, „Zähl rückwärts“, „Lach mal“, „Stell dich vor“ | macht das |
 | „Wein mal“, „Sei traurig“, „Fang an zu weinen“ | macht ein trauriges Gesicht und sagt „Oh … jetzt bin ich sehr traurig.“ und weint |
 | „Hey Emo, ich will meine Stimme aufnehmen“ | nach dem Piep sprechen (roter Punkt = Aufnahme). Wenn du 2 Sekunden still bist, ist die Aufnahme fertig. Sie bleibt auf dem Gerät gespeichert |
-| „Hey Emo, Ton abspielen“ / „Spiel meine Aufnahme ab“ | Fanfare und ein kurzer Konfetti-Knall hinter EMO, Herzen und Luftballons an den Seiten, dann kommt deine Aufnahme. EMO macht Herzaugen und einen Herzmund, der sich zur Stimme bewegt. „Stopp“ hält sie an. „Lösch die Aufnahme“ löscht sie |
+| „Hey Emo, Ton abspielen“ / „Spiel meine Aufnahme ab“ | Fanfare und ein kurzer Konfetti-Knall hinter EMO, Herzen und Luftballons an den Seiten, dann kommt deine Aufnahme. EMO macht Herzaugen und hält mit beiden Händen ein Schild hoch: „Alles Gute zum Geburtstag!“ mit gemaltem Konfetti. „Stopp“ hält sie an. „Lösch die Aufnahme“ löscht sie |
 | „Vergiss alles“ | fängt ein neues Gespräch an |
 | „Kamera aus“ / „Kamera an“ | schaltet die Fingerpistolen-Erkennung aus oder an |
 
