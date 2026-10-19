@@ -781,7 +781,7 @@ function update(dt, t) {
   if (listenMode === 'web' && !webWorked && ((speechSeenAt && t - speechSeenAt > 10000) || (!webStarted && webAskedAt && t - webAskedAt > 12000))) { speechSeenAt = 0; fallbackToVosk(); }
   shakeStep(realDt, t);
   drawingStep(realDt, t);
-  sign.t += (sign.target - sign.t) * ease(sign.target ? 7 : 5, realDt);
+  sign.t += (sign.target - sign.t) * ease(sign.target ? 7 : 12, realDt);
   if (greetHand.target && t > greetHand.until) greetHand.target = 0;
   greetHand.t += (greetHand.target - greetHand.t) * ease(greetHand.target ? 9 : 6, realDt);
   if (hands.target > .5 && !actionLock && !speaking && t - hands.since > 15000) { hands.since = t + 1e9; lowerHands(); }
@@ -2010,7 +2010,7 @@ async function playMyVoice() {
     hands.target = 0; greetHand.target = 0; drawing = null; sign.target = 1;
     startParty(4000); sfxFanfare(); await wait(800);
     await say('Alles Gute zum Geburtstag!', 'love', 3500);
-    setTimeout(() => { if (!playingMine) sign.target = 0; }, 2500);
+    sign.target = 0; partyUntil = 0;
     return;
   }
   const my = ++sayToken; stopVoice();
@@ -2027,8 +2027,7 @@ async function playMyVoice() {
   if (my !== sayToken) { partyUntil = 0; return; }
   src.start(); playingMine = true;
   await new Promise(r => { src.onended = r; setTimeout(r, buf.duration * 1000 + 300); });
-  playingMine = false;
-  setTimeout(() => { if (!playingMine) sign.target = 0; }, 2000);
+  playingMine = false; sign.target = 0; partyUntil = 0; exprUntil = now();
   if (my === sayToken) { speaking = false; lastSaidEnd = now() + 1500; currentVoiceSrc = null; }
 }
 async function deleteMyVoice() { myVoice = null; try { await kvSet('myVoice', null); } catch (e) {} return say('Okay, die Aufnahme ist gelöscht.', 'happy'); }
