@@ -4,9 +4,9 @@ Ein kleiner Roboter auf dem Bildschirm, inspiriert von EMO. Man sieht nur seine 
 
 ## Öffnen
 
-**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v21/**
+**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v22/**
 
-Jede neue Version bekommt einen eigenen Link (`v21`, `v22`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 22`.
+Jede neue Version bekommt einen eigenen Link (`v22`, `v23`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 23`.
 
 Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gibt keine Knöpfe und keine Einstellungen.
 
@@ -19,7 +19,7 @@ Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gib
 
 **Mit Claude-Gehirn** redet er über alles und sucht im Internet. Dafür EMO einmal mit diesem Link öffnen (Schlüssel von https://console.anthropic.com/settings/keys):
 
-`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v21/#key=DEIN-SCHLÜSSEL`
+`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v22/#key=DEIN-SCHLÜSSEL`
 
 Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse entfernt. Er muss mit `sk-ant-` anfangen. Ist er falsch, gesperrt oder ist kein Guthaben mehr auf dem Konto, sagt EMO das einmal, zeigt den Grund kurz unten an und antwortet danach mit seinem eigenen Wissensbuch weiter. Mit `#ort=Kassel` kann man den Wohnort für das Wetter ändern (Standard: Frankfurt am Main).
 
@@ -54,6 +54,8 @@ Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse en
 | „Schau nach links/rechts/oben/unten“, „Dreh dich“, „Spring“, „Nick mal“, „Wink mal“ | bewegt sich |
 | „Zähl bis zehn“, „Zähl rückwärts“, „Lach mal“, „Stell dich vor“ | macht das |
 | „Wein mal“, „Sei traurig“, „Fang an zu weinen“ | macht ein trauriges Gesicht und sagt „Oh … jetzt bin ich sehr traurig.“ und weint |
+| „Hey Emo, ich will meine Stimme aufnehmen“ | nach dem Piep sprechen (roter Punkt = Aufnahme). Wenn du 2 Sekunden still bist, ist die Aufnahme fertig. Sie bleibt auf dem Gerät gespeichert |
+| „Hey Emo, Ton abspielen“ / „Spiel meine Aufnahme ab“ | spielt deine Aufnahme mit Herzaugen ab. „Stopp“ hält sie an. „Lösch die Aufnahme“ löscht sie |
 | „Vergiss alles“ | fängt ein neues Gespräch an |
 | „Kamera aus“ / „Kamera an“ | schaltet die Fingerpistolen-Erkennung aus oder an |
 

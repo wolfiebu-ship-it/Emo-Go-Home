@@ -137,6 +137,8 @@ function perk(txt) { if (!speaking && !asleep && !actionLock && (txt === undefin
 // EMO only follows you when you call him: "Hey Emo, …" (or right after "Hey Emo" alone, for a few seconds)
 const WAKE = /(^|\s)(hey|hei|he|ey|hallo|hi|ok|okay|na)?\s*(emo|emma|ema|nemo|imo|e-mo|e mo|elmo|emu|emmo|ehmo|immo|amo|emos|hemo|heimo|ihmo|aemo|emoh)(\s|$)|^(hey|hei|he) mo(\s|$)/;
 let wakeUntil = 0;
+// "Hey Emo …" is always you, never EMO hearing himself (he never says "Hey Emo")
+const calledByYou = raw => /(^|\s)(hey|hei|he|ey|ok|okay) (emo|emma|ema|nemo|imo|elmo|emu|emmo|ehmo|immo|amo|mo)(\s|$)|^(hemo|heimo)(\s|$)/.test(clean(raw)) && !/hey emo/i.test(lastSaid);
 function addressed(txt) { const r = String(txt || '').toLowerCase().replace(/[!?.,;:"'„“]/g, ' ').replace(/\s+/g, ' ').trim(); return WAKE.test(r) || now() < wakeUntil; }
 let actionLock = false;
 let asleep = true, lastActive = now();
@@ -430,6 +432,10 @@ function render(t) {
     drawHand(g, .66 * S + Math.sin(t / 110) * S * .035, y, 1, .1 + Math.sin(t / 110) * .35, t);
   }
   drawTongue(g, t);
+  if (recording) {
+    const pulse = .6 + .4 * Math.sin(t / 180);
+    g.globalAlpha = pulse; g.fillStyle = '#ff3355'; g.beginPath(); g.arc(0, .3 * S, S * (.03 + recLevel * .025), 0, Math.PI * 2); g.fill(); g.globalAlpha = 1;
+  }
   if (thinking) {
     for (let i = 0; i < 3; i++) { const a = (Math.sin(t / 200 - i * .9) + 1) / 2; g.globalAlpha = .3 + a * .7; g.fillStyle = EYE; g.beginPath(); g.arc((i - 1) * .07 * S, .3 * S, .018 * S, 0, Math.PI * 2); g.fill(); }
     g.globalAlpha = 1;
@@ -589,6 +595,7 @@ function update(dt, t) {
   }
   if (speaking && deviceVoiceActive) lvl = .35 + Math.sin(t / 70) * .3;
   talkLevel += (lvl - talkLevel) * ease(20, dt);
+  if (recording) listenUntil = Math.max(listenUntil, t + 150);
   if (t < wakeUntil && !speaking) listenUntil = Math.max(listenUntil, t + 150);
   listenK += ((t < listenUntil ? 1 : 0) - listenK) * ease(t < listenUntil ? 12 : 5, realDt);
 
@@ -921,6 +928,8 @@ function canBarge(t) {
   t = clean(t);
   if (!speaking || actionLock || now() - speakStart < 250 || !t) return false;
   if (WAKE.test(t)) return true;
+  // your recorded message plays: the microphone hears it too, so only a clear "Stopp" ends it
+  if (playingMine) return /\b(stopp?|aufhören|hör auf|aus|halt)\b/.test(t);
   const w = t.split(' ').filter(x => x.length > 1);
   if (w.length >= 2) return t.replace(/ /g, '').length >= 5 && echoScore(norm(t)) < .34;
   if (w.length === 1 && w[0].length >= 3) return !clean(lastSaid).split(' ').some(x => x === w[0] || (x.length >= 4 && lev(x, w[0]) <= 1));
@@ -1234,6 +1243,10 @@ const COMMANDS = [
   [/^(sprich mir nach|sprich nach|wiederhole nach mir|wiederhol mal|wiederhole)( mal)? (.+)$/, m => say(capFirst(m[3]) + '!', 'happy')],
   [/^(sag|sage)( mal| bitte| doch| jetzt)* (deinen namen|wie du heißt)$/, () => say('Ich heiße Emo!', 'happy')],
   [/^(sag|sage)( mal| bitte| doch| jetzt)* (?!(?:mal|bitte|doch|jetzt|mir|uns|was|wer|wie|wo|wann|warum|wieso|welche|ob|bescheid|das nochmal|das noch mal|es nochmal)\b)(.+)$/, m => say(capFirst(m[3]) + '!', 'happy')],
+  // record your own voice and play it back
+  [/(stimme|ton|nachricht|sprachnachricht|etwas|was|mich|video)( mal| bitte| jetzt)* (auf)?nehmen|aufnehmen|aufnahme (machen|starten|beginnen)|^(nimm|nehme) (mich|meine stimme|was|etwas|einen ton|eine nachricht)( mal| bitte)* auf/, () => { recordVoice(); }],
+  [/(lösch|lösche|entferne)\w*( mal| bitte)* (die |meine )?(aufnahme|stimme|nachricht)/, () => deleteMyVoice()],
+  [/(ton|aufnahme|stimme|nachricht|sprachnachricht|meine stimme)( mal| bitte| jetzt)* (ab)?spielen|^(spiel|spiele|spielt)( mal| bitte| jetzt| doch)* (\w+ )*(ton|aufnahme|stimme|nachricht|sprachnachricht|geburtstagsnachricht)( ab| vor)?$|^(spiel|spiele)( mal| bitte| jetzt)* ab$|^abspielen$/, () => playMyVoice()],
   // little tricks
   [/\b(zeichne|zeichnen|zeichnest|male|malen|malst)\b|^mal (mir |uns )?(ein|eine|einen|was|etwas|irgendwas|bitte)\b/, (m, t) => drawPicture(t)],
   [/^(wein|weine|heul|heule)( mal| doch| bitte| jetzt)*$|^weinen$|(fang|fange) (an zu|mal an zu) weinen|^(sei|guck|schau)( mal| bitte| doch| jetzt)* (sehr |ganz )?traurig/, () => { crying = 4; sfxSob(); return say('Oh … jetzt bin ich sehr traurig.', 'sad', 4000); }],
@@ -1317,7 +1330,7 @@ async function handleInput(raw) {
   // not called by name: EMO ignores it (only "Bang" with raised hands always works)
   if (!addressed(raw)) return;
   wakeUntil = 0;
-  if (isEcho(t)) return;
+  if (!calledByYou(raw) && isEcho(t)) return;
   if (FILLER.test(t)) { activity(); setExpr('happy', 900); return; }
   setHeard(raw); activity();
   if (quickAction(t)) return;
@@ -1669,6 +1682,7 @@ const QUICK = t => QUIET.test(t) || handsUpSaid(t) || bangSaid(t) || HANDS_DOWN.
 let utterQuick = false, utterStart = 0, utterDuringSpeech = false;
 function allowedQuick(raw, t) { return addressed(raw) || (hands.target > .5 && bangSaid(t)); }
 function heardPartial(txt) {
+  if (recording) return;
   const t = norm(txt || '');
   if (!t) return;
   if (!utterStart) { utterStart = now(); utterDuringSpeech = speaking || now() - lastSaidEnd < 250; }
@@ -1677,6 +1691,7 @@ function heardPartial(txt) {
   utterQuick = true; setHeard(txt); activity(); quickAction(t);
 }
 function heardFinal(txt) {
+  if (recording) { utterQuick = false; utterStart = 0; return; }
   listenUntil = Math.min(listenUntil, now() + 250);
   const was = utterQuick, duringSpeech = utterStart ? utterDuringSpeech : (speaking || now() - lastSaidEnd < 600);
   utterQuick = false; utterStart = 0;
@@ -1685,7 +1700,7 @@ function heardFinal(txt) {
   const t = norm(txt);
   if (QUICK(t) && !isEcho(t)) { if (allowedQuick(txt, t)) { wakeUntil = 0; setHeard(txt); activity(); quickAction(t); } return; }
   // something that started while EMO was talking: keep only the part that isn't EMO hearing himself
-  if (duringSpeech && echoScore(t) >= .34) { txt = dropEcho(t); if (!txt) return; }
+  if (duringSpeech && !calledByYou(txt) && echoScore(t) >= .34) { txt = dropEcho(t); if (!txt) return; }
   handleInput(txt);
 }
 
@@ -1711,6 +1726,7 @@ function startMic() {
 }
 function newSession() {
   clearTimeout(restartTimer);
+  if (recording) return;
   if (!micOn || listenMode !== 'web') return;
   consumed = 0;
   rec = new SR(); rec.lang = 'de-DE'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
@@ -1753,6 +1769,80 @@ function newSession() {
   };
   try { rec.start(); } catch (e) { restartTimer = setTimeout(newSession, 1000); }
 }
+
+/* --- Your own voice: "Hey Emo, ich will meine Stimme aufnehmen" / "Hey Emo, Ton abspielen" --- */
+let recording = false, recLevel = 0, myVoice = null, playingMine = false;
+function kvDb() { return new Promise((res, rej) => { const r = indexedDB.open('emo', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+async function kvSet(k, v) { const db = await kvDb(); return new Promise((res, rej) => { const tx = db.transaction('kv', 'readwrite'); v == null ? tx.objectStore('kv').delete(k) : tx.objectStore('kv').put(v, k); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); }
+async function kvGet(k) { const db = await kvDb(); return new Promise((res, rej) => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+try { kvGet('myVoice').then(v => { if (v && v.pcm) myVoice = v; }).catch(() => {}); } catch (e) {}
+function beep(up) { const t = ac().currentTime; tone(up ? 880 : 660, up ? 1320 : 440, t, .14, 'sine', .25); }
+async function recordVoice() {
+  if (recording || actionLock) return;
+  actionLock = true;
+  try {
+    await say('Okay! Sprich nach dem Piep. Wenn du fertig bist, sei einfach kurz still.', 'happy');
+    // the device's recognizer has to let go of the microphone while we record
+    recording = true;
+    if (listenMode === 'web') { const r = rec; rec = null; clearTimeout(restartTimer); clearTimeout(finalizeTimer); try { r && r.abort(); } catch (e) {} }
+    let stream = listenMode === 'vosk' && micStream, own = false;
+    if (!stream) { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } }); own = true; }
+    await wait(250); beep(true); await wait(200);
+    const a = ac(), srcNode = a.createMediaStreamSource(stream), proc = a.createScriptProcessor(4096, 1, 1), sink = a.createGain(); sink.gain.value = 0;
+    const chunks = []; let floor = .01, started = -1, lastVoice = 0, t0 = now();
+    const done = new Promise(resolve => {
+      proc.onaudioprocess = ev => {
+        const d = new Float32Array(ev.inputBuffer.getChannelData(0)); chunks.push(d);
+        let q = 0; for (let i = 0; i < d.length; i++) q += d[i] * d[i];
+        const rms = Math.sqrt(q / d.length), t = now();
+        recLevel = Math.min(1, rms * 12);
+        if (started < 0 && t - t0 < 600) floor = floor * .8 + rms * .2;
+        if (rms > Math.max(.015, floor * 3)) { if (started < 0) started = chunks.length - 1; lastVoice = t; }
+        // stop after 2 s of silence, after 30 s, or when nothing was said for 8 s
+        if ((started >= 0 && t - lastVoice > 2000) || t - t0 > 30000 || (started < 0 && t - t0 > 8000)) resolve();
+      };
+    });
+    srcNode.connect(proc); proc.connect(sink); sink.connect(a.destination);
+    await done;
+    proc.onaudioprocess = null; try { srcNode.disconnect(); proc.disconnect(); } catch (e) {}
+    if (own) stream.getTracks().forEach(tr => tr.stop());
+    recording = false; recLevel = 0; beep(false);
+    if (listenMode === 'web') newSession();
+    if (started < 0) return say('Ich habe nichts gehört. Versuch es nochmal und sprich etwas lauter.', 'curious');
+    // keep a little before the first word, cut the silence at the end, make it nice and loud
+    const per = chunks[0].length, from = Math.max(0, started - Math.round(.25 * a.sampleRate / per));
+    const keep = Math.max(1, chunks.length - Math.max(0, Math.floor(1.6 * a.sampleRate / per)));
+    const pcm = new Float32Array((keep - from) * per); for (let i = from; i < keep; i++) pcm.set(chunks[i], (i - from) * per);
+    let peak = 0; for (let i = 0; i < pcm.length; i++) peak = Math.max(peak, Math.abs(pcm[i]));
+    if (peak > 0) { const g = Math.min(8, .9 / peak); for (let i = 0; i < pcm.length; i++) pcm[i] *= g; }
+    myVoice = { rate: a.sampleRate, pcm };
+    try { await kvSet('myVoice', myVoice); } catch (e) {}
+    await wait(300);
+    return say('Super! Ich habe deine Stimme gespeichert. Wenn du sie hören willst, sag einfach: Ton abspielen.', 'happy');
+  } catch (e) {
+    hint('Aufnahme ging nicht: ' + (e && e.message || e), 10000);
+    return say('Oh, das Aufnehmen hat nicht geklappt. Darf ich das Mikrofon benutzen?', 'sad');
+  } finally {
+    recording = false; recLevel = 0; actionLock = false;
+    if (listenMode === 'web' && !rec) newSession();
+  }
+}
+async function playMyVoice() {
+  if (!myVoice) { try { const v = await kvGet('myVoice'); if (v && v.pcm) myVoice = v; } catch (e) {} }
+  if (!myVoice) return say('Ich habe noch keine Aufnahme. Sag zuerst, dass du deine Stimme aufnehmen willst.', 'curious');
+  const my = ++sayToken; stopVoice();
+  const a = ac(), buf = a.createBuffer(1, myVoice.pcm.length, myVoice.rate); buf.copyToChannel(myVoice.pcm, 0);
+  const src = a.createBufferSource(), out = a.createGain(); src.buffer = buf; out.gain.value = 1.4;
+  if (!voiceAnalyser) { voiceAnalyser = a.createAnalyser(); voiceAnalyser.fftSize = 512; voiceAnalyser.connect(master); }
+  src.connect(out); out.connect(voiceAnalyser);
+  currentVoiceSrc = src; currentVoiceOut = out; lastSaid = '';
+  setExpr('love', buf.duration * 1000 + 1500); speaking = true; speakStart = now(); activity();
+  src.start(); playingMine = true;
+  await new Promise(r => { src.onended = r; setTimeout(r, buf.duration * 1000 + 300); });
+  playingMine = false;
+  if (my === sayToken) { speaking = false; lastSaidEnd = now() + 1500; currentVoiceSrc = null; }
+}
+async function deleteMyVoice() { myVoice = null; try { await kvSet('myVoice', null); } catch (e) {} return say('Okay, die Aufnahme ist gelöscht.', 'happy'); }
 
 /* --- Vosk (offline, in the page) --- */
 let voskBuf = '', voskTimer = 0;
