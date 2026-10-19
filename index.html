@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#000000">
 <title>EMO Go Home</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -76,7 +77,7 @@ function resize() {
   glow.width = Math.max(1, Math.round(W / 4)); glow.height = Math.max(1, Math.round(H / 4));
   glow2.width = Math.max(1, Math.round(W / 12)); glow2.height = Math.max(1, Math.round(H / 12));
   // phones held upright: a bit bigger eyes, so they are easy to see
-  S = Math.min(W / (H > W * 1.2 ? 1.5 : 1.75), H * 0.9);
+  S = Math.min(W / (H > W * 1.2 ? 1.5 : 1.75), H * (W > H && H < 520 ? 1 : .9));
 }
 addEventListener('resize', resize); resize();
 addEventListener('orientationchange', () => { resize(); setTimeout(resize, 250); setTimeout(resize, 700); });
@@ -480,9 +481,11 @@ function makeSignDeco() {
 }
 function drawSign(g, t) {
   if (sign.t < .01) return;
-  const sw = Math.min(1.15 * S, W * .92 / (face.sc || 1)), sh = sw * .38;
-  const cy = .23 * S + sh / 2 + (1 - sign.t) * (H * (1 - FACE_Y) + sh), wob = Math.sin(t / 420) * .03 * sign.t;
-  g.save(); g.translate(0, cy); g.rotate(wob);
+  const sw = Math.min(1.15 * S, (W - S * .0078 * 92 - 20) / (face.sc || 1), (H * (1 - FACE_Y) / (face.sc || 1) - .31 * S) / .38), sh = sw * .38;
+  // the sign sways slowly, but the hands never leave the screen
+  const sway = Math.sin(t / 900) * Math.max(0, Math.min(.07 * S, W / 2 / (face.sc || 1) - sw / 2 - S * .0078 * 46 - 10)) * sign.t;
+  const cy = .23 * S + sh / 2 + (1 - sign.t) * (H * (1 - FACE_Y) + sh) + Math.sin(t / 450) * .012 * S, wob = Math.sin(t / 900 + .6) * .045 * sign.t;
+  g.save(); g.translate(sway, cy); g.rotate(wob);
   // the board
   g.fillStyle = '#fff6e6'; rr(g, -sw / 2, -sh / 2, sw, sh, sh * .12); g.fill();
   g.lineWidth = Math.max(2, sh * .035); g.strokeStyle = '#ff4f7b'; rr(g, -sw / 2 + sh * .05, -sh / 2 + sh * .05, sw - sh * .1, sh * .9, sh * .09); g.stroke();
@@ -506,12 +509,26 @@ function drawSign(g, t) {
     const gr = g.createLinearGradient(-wdt / 2, 0, wdt / 2, 0); gr.addColorStop(0, cols[i][0]); gr.addColorStop(1, cols[i][1]);
     g.fillStyle = gr; g.fillText(line, 0, y + Math.sin(t / 260 + i) * sh * .012);
   });
-  g.restore();
-  // both hands hold the sign at its sides
+  // both hands grip the sides: palm outside, fingers curled over the front edge, squeezing a little now and then
+  const u = S * .0078;
   for (const side of [-1, 1]) {
-    const hx = side * (sw / 2 - sh * .02), hy = cy + side * wob * sw / 2 + sh * .05;
-    drawHand(g, hx, hy, side, side * .35, t);
+    const squeeze = Math.max(0, Math.sin(t / 700 + side)) * u * 1.5;
+    g.save(); g.translate(side * (sw / 2 + u * 9 - squeeze), Math.sin(t / 520 + side * 2) * u * 2);
+    g.rotate(-side * Math.PI / 2 + side * .12);
+    drawGrip(g, side, t);
+    g.restore();
   }
+  g.restore();
+}
+// a hand seen from the front, holding something: four curled fingers and a thumb over the edge
+function drawGrip(g, side, t) {
+  const u = S * .0078; g.save(); g.scale(u, u);
+  g.fillStyle = eyeCol();
+  rr(g, -11, -4, 22, 19, 7); g.fill();                                   // palm
+  for (let i = 0; i < 4; i++) { const fx = -8.25 + i * 5.5; rr(g, fx - 2.6, -15 - (i === 1 || i === 2 ? 1.5 : 0), 5.2, 13, 2.6); g.fill(); } // fingers over the front
+  g.fillStyle = 'rgba(0,0,0,.22)'; for (let i = 1; i < 4; i++) g.fillRect(-11 + i * 5.5 - .5, -14, 1, 9); // little gaps between fingers
+  g.fillStyle = eyeCol(); g.save(); g.translate(side * 11, 4); g.rotate(side * .6); rr(g, -2.8, -9, 5.6, 12, 2.8); g.fill(); g.restore(); // thumb
+  g.restore();
 }
 function drawHand(g, x, y, side, rot, t) {
   g.save(); g.translate(x, y); g.rotate(rot);
@@ -941,23 +958,32 @@ function loadVoice() {
     ort.env.wasm.wasmPaths = asset('voice/');
     const cfg = await (await fetch(asset(VOICE_FILE + '.json'))).json();
     const sess = await ort.InferenceSession.create(await fetchBytes(VOICE_FILE, 'voice'), { executionProviders: ['wasm'] });
-    let ids = null;
-    const phon = await createPiperPhonemize({
-      print: line => {
-        try {
-          const M = cfg.phoneme_id_map, out = [1, 0];
-          for (const ph of JSON.parse(line).phonemes) if (M[ph]) out.push(...M[ph], 0);
-          out.push(2); ids = (ids || []).concat(out);
-        } catch (e) {}
-      },
-      printErr: () => {}, locateFile: f => asset('voice/' + f),
-    });
+    // The sound-maker (espeak) breaks after ~128 sentences, so it is rebuilt in the background every 80 sentences
+    // and right away if it ever fails.
+    const makePhon = async () => {
+      let ids = null;
+      const phon = await createPiperPhonemize({
+        print: line => {
+          try {
+            const M = cfg.phoneme_id_map, out = [1, 0];
+            for (const ph of JSON.parse(line).phonemes) if (M[ph]) out.push(...M[ph], 0);
+            out.push(2); ids = (ids || []).concat(out);
+          } catch (e) {}
+        },
+        printErr: () => {}, locateFile: f => asset('voice/' + f),
+      });
+      return { uses: 0, run(text) { ids = null; this.uses++; phon.callMain(['-l', cfg.espeak.voice, '--input', JSON.stringify([{ text }]), '--espeak_data', '/espeak-ng-data']); return ids; } };
+    };
+    let cur = await makePhon(), next = null;
+    const refresh = () => { if (!next) next = makePhon().then(p => { cur = p; next = null; }, () => { next = null; }); return next; };
     piper = {
       cfg, sess,
-      ids(text) { ids = null; phon.callMain(['-l', cfg.espeak.voice, '--input', JSON.stringify([{ text }]), '--espeak_data', '/espeak-ng-data']); return ids; },
+      async ids(text) {
+        if (cur.uses >= 80) refresh();
+        try { return cur.run(text); }
+        catch (e) { await refresh(); return cur.run(text); }
+      },
     };
-    try { await synthChild('Hallo.'); } catch (e) {}
-    setTimeout(warmPhrases, 3000);
     return true;
   })().catch(e => { console.warn('voice failed', e); return false; })
     .then(ok => { readyVoice = true; loadProg.voice = 1; maybeGreet(); return ok; });
@@ -967,7 +993,7 @@ function prepSpeech(text) {
   return text.replace(/\bEMO\b/g, 'Emo').replace(/[*_#`~|<>\[\]]/g, ' ').replace(/(\d)\.(\d)/g, '$1,$2').replace(/\s+/g, ' ').trim();
 }
 async function synthChild(text) {
-  const ids = piper.ids(prepSpeech(text));
+  const ids = await piper.ids(prepSpeech(text));
   if (!ids || ids.length < 4) return null;
   const c = piper.cfg.inference;
   const out = await piper.sess.run({
@@ -1423,6 +1449,9 @@ const COMMANDS = [
   [/(stimme|ton|nachricht|sprachnachricht|etwas|was|mich|video)( mal| bitte| jetzt)* (auf)?nehmen|aufnehmen|aufnahme (machen|starten|beginnen)|^(nimm|nehme) (mich|meine stimme|was|etwas|einen ton|eine nachricht)( mal| bitte)* auf/, () => { recordVoice(); }],
   [/(lösch|lösche|entferne)\w*( mal| bitte)* (die |meine )?(aufnahme|stimme|nachricht)/, () => deleteMyVoice()],
   [/(ton|aufnahme|stimme|nachricht|sprachnachricht|meine stimme)( mal| bitte| jetzt)* (ab)?spielen|^(spiel|spiele|spielt)( mal| bitte| jetzt| doch)* (\w+ )*(ton|aufnahme|stimme|nachricht|sprachnachricht|geburtstagsnachricht)( ab| vor)?$|^(spiel|spiele)( mal| bitte| jetzt)* ab$|^abspielen$/, () => playMyVoice()],
+  // full screen
+  [/(voll ?bild|vollbildschirm|ganzer bildschirm|ganzen bildschirm|fullscreen|full screen)( aus| beenden| weg)|(kein|nicht mehr) (voll ?bild|vollbildschirm)/, () => fullscreenCmd(false)],
+  [/voll ?bild|vollbildschirm|ganzer bildschirm|ganzen bildschirm|fullscreen|full screen/, () => fullscreenCmd(true)],
   // little tricks
   [/\b(zeichne|zeichnen|zeichnest|male|malen|malst)\b|^mal (mir |uns )?(ein|eine|einen|was|etwas|irgendwas|bitte)\b/, (m, t) => drawPicture(t)],
   [/^(wein|weine|heul|heule)( mal| doch| bitte| jetzt)*$|^weinen$|(fang|fange) (an zu|mal an zu) weinen|^(sei|guck|schau)( mal| bitte| doch| jetzt)* (sehr |ganz )?traurig/, () => { crying = 4; sfxSob(); return say('Oh … jetzt bin ich sehr traurig.', 'sad', 4000); }],
@@ -1952,7 +1981,7 @@ function newSession() {
 }
 
 /* --- Your own voice: "Hey Emo, ich will meine Stimme aufnehmen" / "Hey Emo, Ton abspielen" --- */
-let recording = false, recLevel = 0, myVoice = null, playingMine = false;
+let recording = false, recLevel = 0, myVoice = null, playingMine = false, recordBusy = false, recCancel = false;
 function kvDb() { return new Promise((res, rej) => { const r = indexedDB.open('emo', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
 async function kvSet(k, v) { const db = await kvDb(); return new Promise((res, rej) => { const tx = db.transaction('kv', 'readwrite'); v == null ? tx.objectStore('kv').delete(k) : tx.objectStore('kv').put(v, k); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); }
 async function kvGet(k) { const db = await kvDb(); return new Promise((res, rej) => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
@@ -1960,9 +1989,10 @@ try { kvGet('myVoice').then(v => { if (v && v.pcm) myVoice = v; }).catch(() => {
 function beep(up) { const t = ac().currentTime; tone(up ? 880 : 660, up ? 1320 : 440, t, .14, 'sine', .25); }
 async function recordVoice() {
   if (recording || actionLock) return;
-  actionLock = true;
+  actionLock = true; recordBusy = true; recCancel = false;
   try {
-    await say('Okay! Sprich nach dem Piep. Wenn du fertig bist, sei einfach kurz still.', 'happy');
+    await say('Okay! Wenn es piept, kannst du sprechen. Wenn du fertig bist, sei kurz still. Tipp mich an, wenn du abbrechen willst.', 'happy');
+    if (recCancel) return say('Okay, abgebrochen.', 'happy');
     // the device's recognizer has to let go of the microphone while we record
     recording = true;
     if (listenMode === 'web') { const r = rec; rec = null; clearTimeout(restartTimer); clearTimeout(finalizeTimer); try { r && r.abort(); } catch (e) {} }
@@ -1980,7 +2010,7 @@ async function recordVoice() {
         if (started < 0 && t - t0 < 600) floor = floor * .8 + rms * .2;
         if (rms > Math.max(.015, floor * 3)) { if (started < 0) started = chunks.length - 1; lastVoice = t; }
         // stop after 2 s of silence, after 30 s, or when nothing was said for 8 s
-        if ((started >= 0 && t - lastVoice > 2000) || t - t0 > 30000 || (started < 0 && t - t0 > 8000)) resolve();
+        if (recCancel || (started >= 0 && t - lastVoice > 2000) || t - t0 > 30000 || (started < 0 && t - t0 > 8000)) resolve();
       };
     });
     srcNode.connect(proc); proc.connect(sink); sink.connect(a.destination);
@@ -1989,6 +2019,8 @@ async function recordVoice() {
     if (own) stream.getTracks().forEach(tr => tr.stop());
     recording = false; recLevel = 0; beep(false);
     if (listenMode === 'web') newSession();
+    // tapped during the recording: nothing is saved
+    if (recCancel) return say('Okay, abgebrochen. Ich habe nichts gespeichert.', 'happy');
     if (started < 0) return say('Ich habe nichts gehört. Versuch es nochmal und sprich etwas lauter.', 'curious');
     // keep a little before the first word, cut the silence at the end, make it nice and loud
     const per = chunks[0].length, from = Math.max(0, started - Math.round(.25 * a.sampleRate / per));
@@ -2004,7 +2036,7 @@ async function recordVoice() {
     hint('Aufnahme ging nicht: ' + (e && e.message || e), 10000);
     return say('Oh, das Aufnehmen hat nicht geklappt. Darf ich das Mikrofon benutzen?', 'sad');
   } finally {
-    recording = false; recLevel = 0; actionLock = false;
+    recording = false; recLevel = 0; actionLock = false; recordBusy = false; recCancel = false;
     if (listenMode === 'web' && !rec) newSession();
   }
 }
@@ -2200,6 +2232,26 @@ async function checkStillThere() {
   hint('Diese Version von EMO gibt es nicht mehr. Bitte den neuen Link benutzen.', 1e9);
 }
 setInterval(checkStillThere, 60000);
+// "Hey Emo, Vollbild": browsers only allow full screen right after a touch, so if needed EMO asks for one tap
+let wantFull = false;
+const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
+function goFull() {
+  const el = document.documentElement, fn = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (!fn) return Promise.reject(new Error('no fullscreen'));
+  try { const r = fn.call(el, { navigationUI: 'hide' }); return r && r.then ? r : Promise.resolve(); } catch (e) { return Promise.reject(e); }
+}
+async function fullscreenCmd(on) {
+  const el = document.documentElement;
+  if (!on) { wantFull = false; try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (e) {} return say('Okay, kein Vollbild mehr.', 'happy'); }
+  if (fsEl()) return say('Ich bin doch schon im Vollbild!', 'happy');
+  if (!el.requestFullscreen && !el.webkitRequestFullscreen) {
+    // iPhone: web pages cannot switch to full screen, but a home-screen icon opens EMO without any bars
+    hint('Vollbild auf dem iPhone: in Safari auf „Teilen“ tippen, dann „Zum Home-Bildschirm“. Dann EMO über das neue Symbol öffnen.', 20000);
+    return say('Auf dem iPhone geht das so: Tipp auf Teilen und dann auf Zum Home-Bildschirm. Dann bin ich immer im Vollbild.', 'curious');
+  }
+  try { await goFull(); return say('Tadaa! Vollbild!', 'happy'); }
+  catch (e) { wantFull = true; return say('Tipp mich einmal an, dann gehe ich ins Vollbild.', 'curious'); }
+}
 function maybeGreet() {
   if (greeted || !readyVoice || !readyEars) return;
   if (audioReady()) { audioOk = true; greet(); }
@@ -2244,7 +2296,9 @@ addEventListener('click', unlock);
 
 let taps = [];
 cvs.addEventListener('pointerdown', async e => {
+  if (wantFull) { wantFull = false; goFull().then(() => say('Tadaa! Vollbild!', 'happy'), () => {}); return; }
   if (!audioOk) return; // the first tap only wakes up sound and motion (handled on touchend/click)
+  if (recordBusy) { recCancel = true; lastTap = now(); if (!recording) { stopVoice(); sayToken++; speaking = false; } return; }
   activity();
   if (await wake()) return;
   if (actionLock) return;
