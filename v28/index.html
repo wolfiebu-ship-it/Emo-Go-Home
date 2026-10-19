@@ -727,7 +727,7 @@ function update(dt, t) {
   if (exprUntil === Infinity && !actionLock) { const r = restingExpr(); if (r !== exprName) applyExpr(r); }
 
   if (!asleep && started && !actionLock && !speaking && !thinking && t - lastActive > 180000) { asleep = true; applyExpr('asleep'); setSub(''); }
-  if (asleep && started && Math.random() < dt * .25) sfxSnore();
+  if (asleep && started && !retired && Math.random() < dt * .25) sfxSnore();
 
   // the device's recognizer never started (or hears speech but never understands anything): switch to EMO's own ears
   if (listenMode === 'web' && !webWorked && ((speechSeenAt && t - speechSeenAt > 10000) || (!webStarted && webAskedAt && t - webAskedAt > 12000))) { speechSeenAt = 0; fallbackToVosk(); }
@@ -1804,6 +1804,7 @@ const QUICK = t => QUIET.test(t) || handsUpSaid(t) || bangSaid(t) || HANDS_DOWN.
 let utterQuick = false, utterStart = 0, utterDuringSpeech = false;
 function allowedQuick(raw, t) { return addressed(raw) || (hands.target > .5 && bangSaid(t)); }
 function heardPartial(txt) {
+  if (retired) return;
   if (recording) return;
   const t = norm(txt || '');
   if (!t) return;
@@ -1813,6 +1814,7 @@ function heardPartial(txt) {
   utterQuick = true; setHeard(txt); activity(); quickAction(t);
 }
 function heardFinal(txt) {
+  if (retired) return;
   if (txt && !recording && (WAKE.test(clean(txt)) || wakeAt(clean(txt)))) perk(txt);
   wakeCued = false;
   if (recording) { utterQuick = false; utterStart = 0; return; }
@@ -2117,6 +2119,23 @@ function audioReady() { return !!AC && AC.state === 'running'; }
 function tryAudio() {
   try { ac(); AC.resume().then(maybeGreet).catch(() => {}); } catch (e) {}
 }
+// A version whose link was deleted switches itself off, even in a tab that is still open:
+// every minute EMO checks if his own link still exists.
+let retired = false;
+async function checkStillThere() {
+  if (retired || !/\/v\d+\/?$/.test(location.pathname)) return;
+  try {
+    const r = await fetch(location.pathname + '?check=' + Date.now(), { method: 'HEAD', cache: 'no-store' });
+    if (r.status !== 404) return;
+  } catch (e) { return; } // offline: keep going
+  retired = true;
+  try { stopVoice(); sayToken++; speaking = false; } catch (e) {}
+  try { micOn = false; listenMode = ''; const r = rec; rec = null; if (r) r.abort(); } catch (e) {}
+  try { if (micProc) micProc.onaudioprocess = null; if (micStream) micStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+  asleep = true; applyExpr('asleep'); exprUntil = Infinity;
+  hint('Diese Version von EMO gibt es nicht mehr. Bitte den neuen Link benutzen.', 1e9);
+}
+setInterval(checkStillThere, 60000);
 function maybeGreet() {
   if (greeted || !readyVoice || !readyEars) return;
   if (audioReady()) { audioOk = true; greet(); }
