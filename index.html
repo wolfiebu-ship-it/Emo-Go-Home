@@ -651,7 +651,9 @@ function render(t) {
 }
 
 /* ================= Shaking the device ================= */
+let lastTap = 0, pokeUntil = 0, pokeSaid = 0;
 function onMotion(e) {
+  if (now() - lastTap < 1500) { lastAcc = null; return; } // a tap on the screen jiggles the phone a little: that is not shaking
   const a = e.accelerationIncludingGravity || e.acceleration; if (!a || a.x == null) return;
   if (lastAcc) { const d = Math.abs(a.x - lastAcc.x) + Math.abs(a.y - lastAcc.y) + Math.abs(a.z - lastAcc.z); shakeEnergy = Math.max(shakeEnergy * .9, d); }
   lastAcc = { x: a.x, y: a.y, z: a.z };
@@ -693,7 +695,14 @@ function shakeStep(dt, t) {
       eyes.forEach(e => e.special = null);
       say(pick(['Uff … mir ist ganz übel. Bitte nicht mehr schütteln!', 'Bläh … alles dreht sich noch. Mach das bitte nicht nochmal.', 'Puh … mir ist schlecht … ich hab gar keinen Bauch, aber trotzdem!']), 'sleepy', 4500);
     }
+  } else if (t < pokeUntil) {
+    // poked in the face: green, swirly eyes, tongue out and a quick little head shake
+    tongue = Math.min(1, tongue + dt * 3);
+    sick = Math.min(.9, sick + dt * 2.5);
+    eyes.forEach(e => e.special = 'spiral');
+    face.k = 16; face.tx = t - lastTap < 650 ? Math.sin((t - lastTap) / 55) * .06 : 0;
   } else {
+    if (pokeUntil) { pokeUntil = 0; face.tx = 0; face.k = 7; eyes.forEach(e => e.special = null); exprUntil = now(); }
     tongue = Math.max(0, tongue - dt * 1.2);
     if (t < queasyUntil) {
       // still swaying and a bit green after the ride
@@ -707,13 +716,14 @@ function drawTongue(g, t) {
   if (tongue < .02) return;
   const L = .2 * S * tongue, w = .12 * S, swing = Math.sin(t / 95) * .6 * (dizzy ? 1 : .35);
   g.save(); g.translate(0, .23 * S);
-  // little mouth line
-  g.strokeStyle = eyeCol(); g.lineWidth = Math.max(2, S * .012); g.lineCap = 'round';
-  g.beginPath(); g.moveTo(-w * .9, 0); g.quadraticCurveTo(0, S * .03, w * .9, 0); g.stroke();
-  g.rotate(swing);
+  // tongue first, then the mouth line over it: it hangs out of the mouth
+  g.save(); g.rotate(swing);
   g.fillStyle = '#ff6f91';
   g.beginPath(); g.moveTo(-w / 2, 0); g.lineTo(-w / 2, L - w / 2); g.arc(0, L - w / 2, w / 2, Math.PI, 0, true); g.lineTo(w / 2, 0); g.closePath(); g.fill();
-  g.strokeStyle = '#d94a72'; g.lineWidth = Math.max(1.5, S * .008); g.beginPath(); g.moveTo(0, S * .01); g.lineTo(0, L * .7); g.stroke();
+  g.strokeStyle = '#d94a72'; g.lineWidth = Math.max(1.5, S * .008); g.beginPath(); g.moveTo(0, S * .02); g.lineTo(0, L * .7); g.stroke();
+  g.restore();
+  g.strokeStyle = eyeCol(); g.lineWidth = Math.max(2, S * .014); g.lineCap = 'round';
+  g.beginPath(); g.moveTo(-w * .95, -S * .004); g.quadraticCurveTo(0, S * .032, w * .95, -S * .004); g.stroke();
   g.restore();
 }
 
@@ -1992,7 +2002,14 @@ async function recordVoice() {
 }
 async function playMyVoice() {
   if (!myVoice) { try { const v = await kvGet('myVoice'); if (v && v.pcm) myVoice = v; } catch (e) {} }
-  if (!myVoice) return say('Ich habe noch keine Aufnahme. Sag zuerst, dass du deine Stimme aufnehmen willst.', 'curious');
+  if (!myVoice) {
+    if (!sign.deco.length) sign.deco = makeSignDeco();
+    hands.target = 0; greetHand.target = 0; drawing = null; sign.target = 1;
+    startParty(4000); sfxFanfare(); await wait(800);
+    await say('Alles Gute zum Geburtstag!', 'love', 3500);
+    setTimeout(() => { if (!playingMine) sign.target = 0; }, 2500);
+    return;
+  }
   const my = ++sayToken; stopVoice();
   const a = ac(), buf = a.createBuffer(1, myVoice.pcm.length, myVoice.rate); buf.copyToChannel(myVoice.pcm, 0);
   const src = a.createBufferSource(), out = a.createGain(); src.buffer = buf; out.gain.value = 1.4;
@@ -2224,10 +2241,11 @@ cvs.addEventListener('pointerdown', async e => {
   activity();
   if (await wake()) return;
   if (actionLock) return;
-  taps = taps.filter(t => now() - t < 2000); taps.push(now());
-  lookAt((e.clientX - W / 2) / (W / 2), (e.clientY - H / 2) / (H / 2), 1500);
-  if (taps.length >= 5) { taps = []; say('Huiii! Mir ist ganz schwindelig!', 'dizzy', 3000); }
-  else { sfxGiggle(); setExpr('laugh', 1200); }
+  lastTap = now();
+  if (dizzy || playingMine || recording) return;
+  // every tap: he feels sick for a moment and asks you to stop
+  pokeUntil = now() + 2600; sfxWobble();
+  if (now() - pokeSaid > 4500 && !speaking) { pokeSaid = now(); say(pick(['Oh … mir geht\'s nicht gut. Hör bitte auf.', 'Uff … mir geht\'s nicht gut. Bitte hör auf.']), null); }
 });
 cvs.addEventListener('contextmenu', e => e.preventDefault());
 boot();
