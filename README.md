@@ -4,9 +4,9 @@ Ein kleiner Roboter auf dem Bildschirm, inspiriert von EMO. Man sieht nur seine 
 
 ## Öffnen
 
-**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v35/**
+**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v36/**
 
-Jede neue Version bekommt einen eigenen Link (`v35`, `v36`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 36`.
+Jede neue Version bekommt einen eigenen Link (`v36`, `v37`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 37`.
 
 Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gibt keine Knöpfe und keine Einstellungen.
 
@@ -20,7 +20,7 @@ Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gib
 
 **Mit Claude-Gehirn** redet er über alles und sucht im Internet. Dafür EMO einmal mit diesem Link öffnen (Schlüssel von https://console.anthropic.com/settings/keys):
 
-`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v35/#key=DEIN-SCHLÜSSEL`
+`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v36/#key=DEIN-SCHLÜSSEL`
 
 Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse entfernt. Er muss mit `sk-ant-` anfangen. Ist er falsch, gesperrt oder ist kein Guthaben mehr auf dem Konto, sagt EMO das einmal, zeigt den Grund kurz unten an und antwortet danach mit seinem eigenen Wissensbuch weiter. Mit `#ort=Kassel` kann man den Wohnort für das Wetter ändern (Standard: Frankfurt am Main).
 
@@ -59,6 +59,7 @@ Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse en
 | „Hey Emo, Vollbild“ / „Vollbild aus“ | Vollbild (auf dem iPad evtl. einmal antippen; auf dem iPhone: Teilen → Zum Home-Bildschirm) |
 | „Hey Emo, Ton abspielen“ / „Spiel meine Aufnahme ab“ (ohne Aufnahme sagt EMO selbst „Alles Gute zum Geburtstag!“) | Fanfare und ein kurzer Konfetti-Knall hinter EMO, Herzen und Luftballons an den Seiten, dann kommt deine Aufnahme. EMO macht Herzaugen und hält mit beiden Händen ein Schild hoch: „Alles Gute zum Geburtstag!“ mit gemaltem Konfetti. „Stopp“ hält sie an. „Lösch die Aufnahme“ löscht sie |
 | Auf EMOs Gesicht tippen | 1. und 2. Mal: er kneift die Augen etwas zu („Bitte hör auf.“). 3. Mal: grüne, wackelnde Kreisel-Augen, Zunge raus, kurzes Kopfschütteln und Schwanken (5 Sekunden): „Oh … mir geht's nicht gut. Hör bitte auf.“ Danach sofort wieder normal |
+| Finger 2 Sekunden auf den Bildschirm halten | Prüf-Anzeige: welche Spracherkennung läuft, ob das Mikrofon an ist und was EMO zuletzt gehört hat. Nochmal 2 Sekunden halten = zu |
 | „Vergiss alles“ | fängt ein neues Gespräch an |
 | „Kamera aus“ / „Kamera an“ | schaltet die Fingerpistolen-Erkennung aus oder an |
 

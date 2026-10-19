@@ -33,6 +33,7 @@ html, body { height: 100%; margin: 0; background: #000; color: var(--ink); font-
 #ear { position: fixed; right: 16px; top: calc(16px + env(safe-area-inset-top, 0px)); width: 10px; height: 10px; border-radius: 50%; background: var(--line); pointer-events: none; transition: background .2s, box-shadow .2s; }
 #ear.on { background: var(--eye); box-shadow: 0 0 10px var(--eye); }
 #ear.hot { background: var(--warn); box-shadow: 0 0 12px var(--warn); }
+#diag { position: fixed; left: 12px; right: 12px; top: 12px; max-height: 60vh; overflow: hidden; background: rgba(8,18,24,.92); border: 1px solid var(--eye); color: var(--ink); border-radius: 12px; padding: 10px 12px; font: 400 13px/1.4 ui-monospace, Menlo, monospace; pointer-events: none; white-space: pre-wrap; z-index: 5; }
 #hint { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: min(460px, calc(100% - 32px)); background: var(--panel); border: 1px solid var(--warn); color: var(--ink); border-radius: 16px; padding: 14px 18px; font: 400 16px/1.45 var(--font-ui); text-align: center; pointer-events: none; }
 #video { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
@@ -44,6 +45,7 @@ html, body { height: 100%; margin: 0; background: #000; color: var(--ink); font-
 <div id="subtitle" aria-live="polite"></div>
 <div id="ear" title="EMO hört zu"></div>
 <div id="hint" role="status" hidden></div>
+<div id="diag" hidden></div>
 <video id="video" playsinline muted></video>
 
 
@@ -1906,8 +1908,22 @@ const QUICK = t => QUIET.test(t) || handsUpSaid(t) || bangSaid(t) || HANDS_DOWN.
 
 // shared by both recognizers
 let utterQuick = false, utterStart = 0, utterDuringSpeech = false;
+// hidden check screen: hold a finger on EMO for 2 seconds
+const heardLog = []; let lastLogKind = '';
+function logHeard(kind, txt) {
+  if (!txt) return; const c = clean(txt);
+  const line = `${kind === 'f' ? '■' : '·'} „${txt}“ ${addressed(txt) ? '→ gerufen ✓' : ''}`;
+  if (kind === 'p' && lastLogKind === 'p') heardLog[heardLog.length - 1] = line; else heardLog.push(line);
+  lastLogKind = kind; if (heardLog.length > 9) heardLog.shift();
+  if (!$('#diag').hidden) showDiag();
+}
+function showDiag() {
+  const ear = listenMode === 'web' ? 'Apple/Google-Erkennung' + (webWorked ? ' (hat schon etwas gehört)' : ' (noch nichts gehört)') : listenMode === 'vosk' ? 'EMOs eigene Erkennung' : voskLoading ? 'eigene Erkennung lädt …' : 'aus';
+  $('#diag').textContent = `Ohren: ${ear}\nMikrofon: ${micOn ? 'an' : 'AUS'}   Stimme: ${piper ? 'Piper' : readyVoice ? 'Gerät' : 'lädt'}   Version: ${location.pathname.split('/').filter(Boolean).pop()}\n\nZuletzt gehört (· = unterwegs, ■ = fertig):\n${heardLog.join('\n') || '(noch nichts)'}\n\nNochmal 2 s drücken = zu`;
+}
 function allowedQuick(raw, t) { return addressed(raw) || (hands.target > .5 && bangSaid(t)); }
 function heardPartial(txt) {
+  logHeard('p', txt);
   if (retired) return;
   if (recording) return;
   const t = norm(txt || '');
@@ -1918,6 +1934,7 @@ function heardPartial(txt) {
   utterQuick = true; setHeard(txt); activity(); quickAction(t);
 }
 function heardFinal(txt) {
+  logHeard('f', txt);
   if (retired) return;
   if (txt && !recording && (WAKE.test(clean(txt)) || wakeAt(clean(txt)))) perk(txt);
   wakeCued = false;
@@ -1971,7 +1988,7 @@ function newSession() {
     for (let i = 0; i < e.results.length; i++) { full += e.results[i][0].transcript + ' '; lastFinal = e.results[i].isFinal; }
     let fresh = full.slice(consumed).trim();
     if (!fresh) return;
-    perk(fresh);
+    perk(fresh); logHeard('p', fresh);
     if (speaking || now() - lastSaidEnd < 1200) {
       const words = fresh.split(/\s+/), tail = words.slice(-5).join(' ');
       if (canBarge(tail) || (!speaking && echoScore(norm(tail)) < .34)) {
@@ -2317,6 +2334,10 @@ addEventListener('touchend', unlock, { passive: true });
 addEventListener('click', unlock);
 
 let taps = [];
+let pressTimer = 0;
+const endPress = () => clearTimeout(pressTimer);
+cvs.addEventListener('pointerup', endPress); cvs.addEventListener('pointercancel', endPress); cvs.addEventListener('pointerleave', endPress);
+cvs.addEventListener('pointerdown', () => { clearTimeout(pressTimer); pressTimer = setTimeout(() => { const d = $('#diag'); d.hidden = !d.hidden; if (!d.hidden) { showDiag(); taps = []; pokeUntil = 0; } }, 1800); });
 cvs.addEventListener('pointerdown', async e => {
   if (wantFull) { wantFull = false; goFull().then(() => say('Tadaa! Vollbild!', 'happy'), () => {}); return; }
   if (!audioOk) return; // the first tap only wakes up sound and motion (handled on touchend/click)
