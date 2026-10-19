@@ -79,6 +79,8 @@ function resize() {
   S = Math.min(W / (H > W * 1.2 ? 1.5 : 1.75), H * 0.9);
 }
 addEventListener('resize', resize); resize();
+addEventListener('orientationchange', () => { resize(); setTimeout(resize, 250); setTimeout(resize, 700); });
+if (window.visualViewport) visualViewport.addEventListener('resize', resize);
 
 const now = () => performance.now();
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -458,6 +460,8 @@ function sfxFanfare() {
   [[523, 0], [659, .12], [784, .24], [1047, .4]].forEach(([f, d]) => tone(f, f, t + d, d === .4 ? .55 : .14, 'triangle', .22));
   for (let k = 0; k < 6; k++) noise(t + .45 + k * .06, .05, rand(3000, 8000), .08, 'bandpass');
 }
+// hands stay fully on the screen, also on a phone held upright
+function handX() { return Math.max(.5 * S, Math.min(.76 * S, (W / 2 - .14 * S) / (face.sc || 1))); }
 function drawHand(g, x, y, side, rot, t) {
   g.save(); g.translate(x, y); g.rotate(rot);
   const u = S * .0078; g.scale(u, u);
@@ -510,13 +514,13 @@ function render(t) {
     const y = lerp(downY, upY, hands.t);
     for (const side of [-1, 1]) {
       const trem = Math.sin(t / 22 + side) * hands.tremble * S * .006;
-      drawHand(g, side * .76 * S + trem, y + Math.sin(t / 180 + side) * S * .01, side, side * (.12 + Math.sin(t / 160) * .14 * hands.wave), t);
+      drawHand(g, side * handX() + trem, y + Math.sin(t / 180 + side) * S * .01, side, side * (.12 + Math.sin(t / 160) * .14 * hands.wave), t);
     }
   }
   if (greetHand.t > .01 && hands.t < .3) {
     // one hand comes up and waves hello
     const downY = H * (1 - FACE_Y) / face.sc + .3 * S, y = lerp(downY, .1 * S, greetHand.t);
-    drawHand(g, .66 * S + Math.sin(t / 110) * S * .035, y, 1, .1 + Math.sin(t / 110) * .35, t);
+    drawHand(g, Math.min(.66 * S, handX()) + Math.sin(t / 110) * S * .035, y, 1, .1 + Math.sin(t / 110) * .35, t);
   }
   if (exprName === 'love' && !asleep) {
     // a little mouth shaped like a heart, it opens with the voice

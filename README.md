@@ -4,22 +4,23 @@ Ein kleiner Roboter auf dem Bildschirm, inspiriert von EMO. Man sieht nur seine 
 
 ## Öffnen
 
-**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v26/**
+**https://wolfiebu-ship-it.github.io/Emo-Go-Home/v27/**
 
-Jede neue Version bekommt einen eigenen Link (`v26`, `v27`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 27`.
+Jede neue Version bekommt einen eigenen Link (`v27`, `v28`, …), damit der Browser keine alte Version zeigt. Neue Version anlegen: `./release.sh 28`.
 
 Seite öffnen, bei der Mikrofon-Frage „Erlauben“ tippen und losreden. Es gibt keine Knöpfe und keine Einstellungen.
 
 - EMO benutzt zuerst die Spracherkennung des Geräts (Apple oder Google), weil die am genauesten ist.
 - Geht die nicht (zum Beispiel ohne Siri/Diktierfunktion), schaltet er von selbst auf seine **eigene Spracherkennung** um. Dafür braucht man nur die normale Mikrofon-Frage.
 - Beim allerersten Öffnen lädt EMO seine Stimme und seine Ohren (zusammen etwa 150 MB). Am besten im WLAN. Danach geht es schnell.
+- Das Handy kann man hochkant oder quer halten: EMO passt sich an, und seine Hände bleiben immer ganz im Bild.
 - Falls der Browser Ton erst nach einer Berührung erlaubt, sagt EMO „Tipp mich einmal an“.
 
 **Ohne Extra** hat EMO ein eigenes **Wissensbuch** (`brain/wissen.js` und `brain/wissen2.js`, über 600 Fakten und 90 Hauptstädte: Rekorde, Einwohnerzahlen, Länder, viel Sport wie Fußball, Basketball, Tennis, Formel 1 und Olympia, Tiere, Weltall, Erde, Körper, Warum-Fragen, Erfindungen, Geschichte, Feiertage, Schule, Sport, Essen, Gefühle und Fragen über ihn selbst). Außerdem kennt er Witze (immer andere), das Wetter, Uhrzeit und Rechnen. Was nicht im Wissensbuch steht, schlägt er bei Wikipedia nach. Neue Fakten kann man einfach in `brain/wissen2.js` dazuschreiben.
 
 **Mit Claude-Gehirn** redet er über alles und sucht im Internet. Dafür EMO einmal mit diesem Link öffnen (Schlüssel von https://console.anthropic.com/settings/keys):
 
-`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v26/#key=DEIN-SCHLÜSSEL`
+`https://wolfiebu-ship-it.github.io/Emo-Go-Home/v27/#key=DEIN-SCHLÜSSEL`
 
 Der Schlüssel wird nur auf dem Gerät gespeichert und sofort aus der Adresse entfernt. Er muss mit `sk-ant-` anfangen. Ist er falsch, gesperrt oder ist kein Guthaben mehr auf dem Konto, sagt EMO das einmal, zeigt den Grund kurz unten an und antwortet danach mit seinem eigenen Wissensbuch weiter. Mit `#ort=Kassel` kann man den Wohnort für das Wetter ändern (Standard: Frankfurt am Main).
 
