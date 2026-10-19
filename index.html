@@ -702,7 +702,7 @@ function shakeStep(dt, t) {
     eyes.forEach(e => e.special = 'spiral');
     face.k = 16; face.tx = t - lastTap < 650 ? Math.sin((t - lastTap) / 55) * .06 : 0;
   } else {
-    if (pokeUntil) { pokeUntil = 0; face.tx = 0; face.k = 7; eyes.forEach(e => e.special = null); exprUntil = now(); }
+    if (pokeUntil) { pokeUntil = 0; face.tx = 0; face.k = 7; eyes.forEach(e => e.special = null); exprUntil = now(); sick = 0; tongue = 0; }
     tongue = Math.max(0, tongue - dt * 1.2);
     if (t < queasyUntil) {
       // still swaying and a bit green after the ride
@@ -716,8 +716,10 @@ function drawTongue(g, t) {
   if (tongue < .02) return;
   const L = .2 * S * tongue, w = .12 * S, swing = Math.sin(t / 95) * .6 * (dizzy ? 1 : .35);
   g.save(); g.translate(0, .23 * S);
-  // tongue first, then the mouth line over it: it hangs out of the mouth
-  g.save(); g.rotate(swing);
+  // tongue first, cut off above the mouth line, then the line over it: it hangs out of the mouth
+  g.save();
+  g.beginPath(); g.moveTo(-w * 2, -S * .004); g.lineTo(-w * .95, -S * .004); g.quadraticCurveTo(0, S * .032, w * .95, -S * .004); g.lineTo(w * 2, -S * .004); g.lineTo(w * 2, S); g.lineTo(-w * 2, S); g.closePath(); g.clip();
+  g.rotate(swing);
   g.fillStyle = '#ff6f91';
   g.beginPath(); g.moveTo(-w / 2, 0); g.lineTo(-w / 2, L - w / 2); g.arc(0, L - w / 2, w / 2, Math.PI, 0, true); g.lineTo(w / 2, 0); g.closePath(); g.fill();
   g.strokeStyle = '#d94a72'; g.lineWidth = Math.max(1.5, S * .008); g.beginPath(); g.moveTo(0, S * .02); g.lineTo(0, L * .7); g.stroke();
@@ -2243,9 +2245,17 @@ cvs.addEventListener('pointerdown', async e => {
   if (actionLock) return;
   lastTap = now();
   if (dizzy || playingMine || recording) return;
-  // every tap: he feels sick for a moment and asks you to stop
-  pokeUntil = now() + 2600; sfxWobble();
-  if (now() - pokeSaid > 4500 && !speaking) { pokeSaid = now(); say(pick(['Oh … mir geht\'s nicht gut. Hör bitte auf.', 'Uff … mir geht\'s nicht gut. Bitte hör auf.']), null); }
+  taps = taps.filter(x => now() - x < 4000); taps.push(now());
+  if (now() < pokeUntil) { pokeUntil = now() + 2600; return; } // already sick: tapping keeps it going
+  if (taps.length < 3) {
+    // 1st and 2nd tap: he squints a little
+    setExpr('squint', 900); try { const a = ac().currentTime; tone(620, 420, a, .09, 'sine', .14); } catch (e) {}
+    if (taps.length === 2 && !speaking) say('Bitte hör auf.', 'squint', 1200);
+    return;
+  }
+  // 3rd tap: green swirly eyes, tongue out, a quick head shake
+  taps = []; pokeUntil = now() + 2600; sfxWobble();
+  say(pick(['Oh … mir geht\'s nicht gut. Hör bitte auf.', 'Uff … mir geht\'s nicht gut. Bitte hör auf.']), null);
 });
 cvs.addEventListener('contextmenu', e => e.preventDefault());
 boot();
